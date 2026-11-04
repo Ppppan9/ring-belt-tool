@@ -7,6 +7,7 @@ import { assetsReady } from './assets.js';
 import { setTheme, themeAssetsReady } from './themes.js';
 import { ADV_GROUP } from './settings.js';
 import { enhanceSections, makeSwitch, themePicker, panelEntrance, bindPress } from './panelfx.js';
+import { clipGeom } from './items.js';
 import { frameItems, drawItems, clearSprites, allSprites, resetSpriteArchive, VIEW } from './items.js';
 import { createAERecorder } from './ae/recorder.js';
 import { export3D } from './export3d/export3d.js';
@@ -89,7 +90,7 @@ function stamp() { const d = new Date(), p = n => String(n).padStart(2, '0'); re
 function download(blob, name) { window.__downloads = (window.__downloads || []).concat(name); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
 
 // ---------------- 游戏控制 ----------------
-function restart() { game.coins = S.coinStart; game.loadLevel((Q.has('level') ? +Q.get('level') : S.startLevel) - 1); } /* ?level=20 直达第 20 关 */
+function restart() { game.loadLevel((Q.has('level') ? +Q.get('level') : S.startLevel) - 1); } /* ?level=20 直达第 20 关 */
 function newRound() { game.seed = (Math.random() * 1e9) | 0; game.loadLevel(game.levelIdx, { shuffle: true }); }
 
 // ---------------- UI ----------------
@@ -160,6 +161,7 @@ window.__toClient = (x, y) => { const b = cv.getBoundingClientRect(); const L = 
 window.__step = (n = 1, dt = 1 / 50) => { for (let i = 0; i < n; i++) frame(dt); };
 window.__auto = on => on ? autoStart() : autoStop();
 window.__setSettings = o => { Object.assign(S, o); onSettings(true); };
+window.__clipNecks = () => game.rings.filter(r => r.p && r.clampLocal).map(r => ({ id: r.id, ...clipGeom(r), centerErr: r._clipC ? Math.abs(Math.hypot(r._clipC[0] - r.c[0], r._clipC[1] - r.c[1]) - r.R) : -1 }));
 window.__spriteKeys = () => Object.keys(allSprites());
 window.__aeStart = aeStart; window.__aeStop = aeStop; window.__aeExport = aeExport; window.__export3d = do3D; window.__exportH5 = exportH5; window.__startRec = startRec; window.__stopRec = stopRec;
 window.__app = { TOOL_ID, SETTINGS_VERSION, APP_VERSION };

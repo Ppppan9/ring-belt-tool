@@ -43,7 +43,7 @@ for (const fast of [true, false]) {
   ok(st.p === false, `L4 e2e：子环全部脱开后紫色中心环碎 ${JSON.stringify(st)}`);
 }
 // 无结算页：手动玩过关后停在完成盘面，不自动换关；点面板“⏭ 下一关”才换关；自动通关会自行续关
-const man = await p.evaluate(() => { __auto(false); __game.loadLevel(0); __game.balls.forEach(b => b.state = 'boxed'); for (let i = 0; i < 200; i++) __step(1); return { st: __game.state, idx: __game.levelIdx, items: __items().filter(it => /lc|coin|reward|continue/i.test(it.id || it.name || '')).length }; });
+const man = await p.evaluate(() => { __auto(false); __game.loadLevel(0); __game.balls.forEach(b => b.state = 'boxed'); for (let i = 0; i < 200; i++) __step(1); return { st: __game.state, idx: __game.levelIdx, items: __items().filter(it => /lc_|coin|reward|continue/i.test(it.id || it.name || '')).length }; });
 ok(man.st === 'lc' && man.idx === 0 && man.items === 0, '手动过关停在完成盘面、无结算面板 ' + JSON.stringify(man));
 await p.click('#btnNext'); ok(await p.evaluate(() => __game.levelIdx === 1 && __game.state === 'play'), '点 ⏭ 下一关 才进入第 2 关');
 const au = await p.evaluate(() => { __auto(false); __game.loadLevel(0); __auto(true); let t = 0; while (__game.levelIdx === 0 && t < 900) { __step(1); t++; } const ev = __game.events.filter(e => e.name === 'levelComplete' || e.name === 'levelStart').slice(-2); __auto(false); return { idx: __game.levelIdx, gap: ev.length === 2 ? +(ev[1].t - ev[0].t).toFixed(2) : -1 }; });

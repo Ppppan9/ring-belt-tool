@@ -55,6 +55,21 @@ export const SPECIAL_LEVELS = {
     plan: [['br', 'detach', 1, 0.5], ['bl', 'detach', 1, 0.3, true], ['ee', 'detach', 1, 0.3, true], ['ww', 'detach', 1, 0.3, true], ['w', 'detach', 1, 0.3, true], ['ss', 'detach', 1, 0.3, true], ['s', 'detach', 1, 0.3, true], ['e', 'detach', 1, 0.3, true]] },
 };
 
+// —— 夹扣对接几何（phase10）：夹块中心必须落在子环管中心线上，且父环外沿到夹块内沿留出可见颈部 ——
+// 需要的圆心距 D = 父R + 父管半宽(取各主题最大 0.205R) + CLIP_NECK_LEN + 夹块半高(29·子R/151·clampScale) + 子R。
+// 不够就把子环（连同它的整棵子树）沿 父→子 方向推远；方向不变，所以缺口安全区角度不变。
+export const CLIP_NECK_LEN = 10;
+export const TUBE_HALF_MAX = R => R * 0.205;
+export const clipBlockHalf = r => 29 * (r.R / 151) * (r.clampScale || 1);
+export const jointNeed = (p, r) => p.R + TUBE_HALF_MAX(p.R) + CLIP_NECK_LEN + clipBlockHalf(r) + r.R;
+export function spaceJoints(lv) {
+  const by = Object.fromEntries(lv.rings.map(r => [r.id, r])), kids = id => lv.rings.filter(r => r.parent === id);
+  const move = (r, dx, dy) => { r.x += dx; r.y += dy; kids(r.id).forEach(k => move(k, dx, dy)); };
+  const visit = p => kids(p.id).forEach(r => { const dx = r.x - p.x, dy = r.y - p.y, d = Math.hypot(dx, dy), need = jointNeed(p, r) + 0.5; if (d < need) move(r, dx / d * (need - d), dy / d * (need - d)); visit(r); });
+  lv.rings.filter(r => !r.parent).forEach(visit); return lv;
+}
+LEVELS.forEach(spaceJoints); Object.values(SPECIAL_LEVELS).forEach(spaceJoints);
+
 // 开口环缺口安全区：夹子(夹在子环上)与颈部接点(在父环上)都不得落在 缺口半角 + GAP_SAFE_DEG 之内（否则视觉穿帮）
 export const GAP_SAFE_DEG = 15;
 export function gapSafeViolations(lv) {

@@ -7,7 +7,7 @@ export const DEFAULT_HAND_SIZE = 0.42, DEFAULT_HAND_ANCHOR_X = 0.2204, DEFAULT_H
 export const TOOL_ID = 'ring-belt';
 export const TOOL_ZH = '解环传送带';
 export const TOOL_EN = 'RingBelt';
-export const SETTINGS_VERSION = 4;
+export const SETTINGS_VERSION = 5;
 const LS_KEY = 'ring-belt-settings';
 // [key, label, type, default, extra]   type: num/bool/select/text/file/button/area/color
 // extra.adv = true → 不常用参数，面板上统一收进底部折叠的「高级设置」（按原分组小标题列出）；
@@ -32,8 +32,6 @@ export const SCHEMA = [
     ['dropTime', '球落入盒子耗时(ms)', 'num', 120, { min: 40, max: 800, step: 10 }],
     ['showHint', '第 1 关显示提示文字', 'bool', true],
     ['hintText', '提示文字', 'text', 'Drag a ring to turn it'],
-    ['coinStart', '金币初始值', 'num', 70, { min: 0, max: 99999, step: 1 }],
-    ['coinPerLevel', '每关奖励金币', 'num', 30, { min: 0, max: 9999, step: 1 }],
     ['lcDelay', '清空后判定过关延迟(ms)', 'num', 60, { min: 0, max: 4000, step: 10 , adv: true }],
     ['shatter', '圆环脱落时碎裂', 'bool', true],
     ['colorMap', '颜色映射 JSON（视频色→美术色）', 'text', '{"yellow":"orange","pink":"red","sky":"cyan","lilac":"purple","grey":"gray"}', { adv: true }],
@@ -122,9 +120,10 @@ export const DEFAULTS = {};
 SCHEMA.forEach(([, items]) => items.forEach(([k, , t, d]) => { if (t !== 'button') DEFAULTS[k] = d; }));
 // 旧默认值表：{ version: {key: oldDefault} } —— 仍等于旧默认的项换成新默认
 const OLD_DEFAULTS = { 2: { beltSpeed: 720, lcDelay: 200, gravity: 2600, dropTime: 160 }, 1: { handImage: '__default__', h5GameName: '圆环传送带', handAnchorX: 0.3, handAnchorY: 0.03, handSize: 0.2, ballRadius: 21, lcDelay: 450, beltSpeed: 600, gravity: 2600, dropTime: 160, colRed: '#cb374e', colBlue: '#426ad0', colGreen: '#1ca74b', colPurple: '#823ec4', colOrange: '#df7e17', colCyan: '#2a9ecc' } };
+const REMOVED = ['coinStart', 'coinPerLevel']; // v5：取消金币功能，旧存档里的金币键直接丢弃
 const RENAMES = {}; // oldKey: [newKey, convertFn]
 export function migrate(raw) {
-  const v = raw && raw.version || 0, src = Object.assign({}, (raw && raw.settings) || {});
+  const v = raw && raw.version || 0, src = Object.assign({}, (raw && raw.settings) || {}); REMOVED.forEach(k => delete src[k]);
   for (const [ok, [nk, fn]] of Object.entries(RENAMES)) if (ok in src && !(nk in src)) { src[nk] = fn ? fn(src[ok]) : src[ok]; delete src[ok]; }
   for (let ver = v; ver < SETTINGS_VERSION; ver++) { const od = OLD_DEFAULTS[ver] || {}; for (const k in od) if (k in src && src[k] === od[k]) src[k] = DEFAULTS[k]; }
   const out = {};

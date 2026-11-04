@@ -59,7 +59,7 @@ export function makeSwitch(inp) {
   inp.addEventListener('change', () => sync(true)); sync(false); return w;
 }
 // 主题选择卡片：隐藏原 select（data-key 保留），卡片点击写回 select 并派发 change
-const PREVIEW = { default: 'linear-gradient(135deg,#b98a55 0 45%,#7a5233 45% 100%)', realistic: 'radial-gradient(circle at 35% 35%,#e9e3d8 0 18%,#9ea3a9 19% 30%,transparent 31%),repeating-linear-gradient(90deg,#d6cab4 0 2px,#c8bba3 2px 4px)' };
+const PREVIEW = { 'original-ui': 'radial-gradient(circle at 70% 60%,#2f3a6b 0 14%,transparent 15%),linear-gradient(135deg,#bff0e3 0 40%,#c9e4ff 40% 70%,#d9d2fb 70%)', default: 'linear-gradient(135deg,#b98a55 0 45%,#7a5233 45% 100%)', realistic: 'radial-gradient(circle at 35% 35%,#e9e3d8 0 18%,#9ea3a9 19% 30%,transparent 31%),repeating-linear-gradient(90deg,#d6cab4 0 2px,#c8bba3 2px 4px)' };
 export function themePicker(sel, options) {
   const box = document.createElement('div'); box.className = 'theme-picker'; box.setAttribute('role', 'radiogroup');
   for (const [v, l] of options) {

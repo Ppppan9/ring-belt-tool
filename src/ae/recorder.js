@@ -5,9 +5,9 @@ import JSX_TEXT from './build_ae_project.jsx';
 import README_TEXT from './README_AE.md';
 import { renderSfxOffline, encodeWav, SFX_NAMES, SFX_DUR } from '../audio.js';
 const r3 = v => Math.round(v * 1000) / 1000, r4 = x => Math.round(x * 10000) / 10000;
-const LABEL = { background: 15, pit: 15, box: 9, ball: 2, ring: 1, ringhl: 11, link: 8, clip: 8, shard: 11, star: 11, flash: 11, hint: 15, hud: 15, lc: 5, confetti: 6, puff: 11, flycoin: 3, ripple: 12, hand: 12, audio: 16 };
+const LABEL = { background: 15, pit: 15, box: 9, ball: 2, ring: 1, ringhl: 11, link: 8, clip: 8, shard: 11, star: 11, flash: 11, hint: 15, hud: 15, lc: 5, confetti: 6, puff: 11, ripple: 12, hand: 12, audio: 16 };
 const CN = { red: '红', orange: '橙', green: '绿', blue: '蓝', cyan: '青', purple: '紫', gray: '灰', yellow: '黄', pink: '粉' };
-const T = { background: ['背景', 'Background'], pit: ['传送带凹槽', 'BeltPit'], box: ['盒子', 'Box'], ball: ['球', 'Ball'], ring: ['圆环', 'Ring'], ringhl: ['圆环高亮', 'RingHighlight'], link: ['连杆', 'Link'], clip: ['夹子', 'Clip'], shard: ['碎片', 'Shard'], star: ['星星', 'Star'], flash: ['闪光', 'Flash'], hint: ['提示文字', 'Hint'], hud: ['顶部界面', 'HUD'], lc: ['过关', 'LevelComplete'], confetti: ['彩带', 'Confetti'], puff: ['烟雾', 'Puff'], flycoin: ['飞金币', 'FlyCoin'], ripple: ['点击波纹', 'Ripple'], hand: ['手指', 'Hand'] };
+const T = { background: ['背景', 'Background'], pit: ['传送带凹槽', 'BeltPit'], box: ['盒子', 'Box'], ball: ['球', 'Ball'], ring: ['圆环', 'Ring'], ringhl: ['圆环高亮', 'RingHighlight'], link: ['连杆', 'Link'], clip: ['夹子', 'Clip'], shard: ['碎片', 'Shard'], star: ['星星', 'Star'], flash: ['闪光', 'Flash'], hint: ['提示文字', 'Hint'], hud: ['顶部界面', 'HUD'], lc: ['过关', 'LevelComplete'], confetti: ['彩带', 'Confetti'], puff: ['烟雾', 'Puff'], ripple: ['点击波纹', 'Ripple'], hand: ['手指', 'Hand'] };
 const colOf = a => (String(a || '').split('_').find(t => t in CN) || null);
 export function layerName(id, asset, zh) {
   const k = id.split('_')[0], rest = id.slice(k.length + 1), base = (T[k] || [k, k])[zh ? 0 : 1], c = colOf(asset);

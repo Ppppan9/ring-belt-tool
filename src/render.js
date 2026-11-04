@@ -63,7 +63,7 @@ export function drawRing(g, game, r, T) {
   g.save(); g.globalAlpha = 0.55; arc(r.R + T * 0.22, T * 0.12, light); g.restore();
 }
 export function drawClamp(g, game, r, T) {
-  const cw = game.clampWorld(r), a = Math.atan2(cw[1] - r.c[1], cw[0] - r.c[0]), p = r.p, col = game.color(p.color), dark = mix(col, '#000000', 0.35);
+  const cw0 = game.clampWorld(r), a = Math.atan2(cw0[1] - r.c[1], cw0[0] - r.c[0]), p = r.p, off = r.clipOff || 0, du = Math.hypot(cw0[0] - p.c[0], cw0[1] - p.c[1]) || 1, cw = [cw0[0] + (cw0[0] - p.c[0]) / du * off, cw0[1] + (cw0[1] - p.c[1]) / du * off], col = game.color(p.color), dark = mix(col, '#000000', 0.35);
   // 连杆
   const pa = Math.atan2(cw[1] - p.c[1], cw[0] - p.c[0]), px = p.c[0] + p.R * Math.cos(pa), py = p.c[1] + p.R * Math.sin(pa);
   g.beginPath(); g.moveTo(px, py); g.lineTo(cw[0], cw[1]); g.lineCap = 'butt'; g.lineWidth = 12; g.strokeStyle = dark; g.stroke(); g.lineWidth = 8; g.strokeStyle = col; g.stroke();
@@ -119,7 +119,7 @@ export function render(g, game, S, bg) {
   /* 结算页已移除 */
   g.restore();
 }
-export function drawTopUI(g, game, S, showCoins) {
+export function drawTopUI(g, game, S) {
   if (theme().topUI) return theme().topUI(g, game, S);
   const LP = asset('level_pill'), PB = asset('pause_btn'); if (LP) g.drawImage(LP, 330, 114, 204, 85); if (PB) g.drawImage(PB, 727, 112, 99, 103); if (LP && PB) { g.font = '700 40px RB, Roboto, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText('Level ' + (game.levelIdx + 1), 432, 156); return; }
   // Level 胶囊
@@ -129,53 +129,11 @@ export function drawTopUI(g, game, S, showCoins) {
   RR(g, 727, 116, 99, 99, 24); g.fillStyle = '#9b4a07'; g.fill(); RR(g, 731, 112, 91, 94, 21); const pg = g.createLinearGradient(0, 112, 0, 206); pg.addColorStop(0, '#ffc53a'); pg.addColorStop(1, '#ea7d0e'); g.fillStyle = pg; g.fill(); RR(g, 741, 120, 71, 40, 14); g.fillStyle = 'rgba(255,240,160,0.35)'; g.fill();
   for (const x of [759, 789]) { RR(g, x - 8, 136, 16, 48, 8); g.fillStyle = '#c45d06'; g.fill(); RR(g, x - 7, 133, 14, 46, 7); g.fillStyle = '#ffef2a'; g.fill(); }
 }
-export function coinPill(g, game, alpha) {
-  g.save(); g.globalAlpha = alpha; RR(g, 50, 132, 230, 58, 29); g.fillStyle = 'rgba(30,15,10,0.55)'; g.fill();
-  drawCoin(g, 60, 161, 34, 0); const v = Math.round(game.coinShown ?? game.coins); g.font = '700 32px RB, Roboto, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText(String(v), 160, 162);
-  RR(g, 222, 137, 48, 48, 10); g.fillStyle = '#2fae2f'; g.fill(); RR(g, 225, 139, 42, 40, 9); g.fillStyle = '#5ee34a'; g.fill(); g.fillStyle = '#fff'; g.fillRect(242, 149, 8, 24); g.fillRect(234, 157, 24, 8); g.restore();
-}
-export function drawCoin(g, x, y, r, tilt) {
-  g.save(); g.translate(x, y); g.scale(1, 1 - tilt); g.beginPath(); g.arc(0, 0, r, 0, TAU); g.fillStyle = '#c86d00'; g.fill(); g.beginPath(); g.arc(0, -2, r - 2, 0, TAU); const gr = g.createRadialGradient(-r * 0.3, -r * 0.4, 1, 0, 0, r); gr.addColorStop(0, '#fff3a0'); gr.addColorStop(0.5, '#ffc21a'); gr.addColorStop(1, '#f08a00'); g.fillStyle = gr; g.fill();
-  g.beginPath(); g.arc(0, -2, r * 0.66, 0, TAU); g.lineWidth = r * 0.1; g.strokeStyle = 'rgba(200,110,0,0.6)'; g.stroke(); star(g, 0, -2, r * 0.42, 0); g.fillStyle = '#f5a300'; g.fill(); g.restore();
-}
-export function coinStack(g, x, y, s) { // 金币堆
-  const coins = [[-120, 70, 0], [-60, 75, 0], [-110, 30, 0], [-40, 35, 0], [10, 50, 0], [-80, -10, 0], [-20, -5, 0], [30, 5, 0], [-50, -45, 0], [0, -40, 0], [-20, -80, 0]];
-  g.save(); g.translate(x, y); g.scale(s, s);
-  for (const [cx, cy] of coins) { for (let k = 2; k >= 0; k--) { const yy = cy + k * 16; g.beginPath(); g.ellipse(cx, yy + 12, 50, 18, 0, 0, TAU); g.fillStyle = '#c86a00'; g.fill(); g.fillStyle = '#f19a10'; g.fillRect(cx - 50, yy, 100, 12); g.beginPath(); g.ellipse(cx, yy, 50, 18, 0, 0, TAU); const gr = g.createLinearGradient(cx - 50, 0, cx + 50, 0); gr.addColorStop(0, '#ffd23a'); gr.addColorStop(0.5, '#fff2a0'); gr.addColorStop(1, '#ffb000'); g.fillStyle = gr; g.fill(); g.beginPath(); g.ellipse(cx, yy, 34, 11, 0, 0, TAU); g.strokeStyle = '#f0a000'; g.lineWidth = 4; g.stroke(); } }
-  for (const [cx, cy, r] of [[95, 30, 62], [40, -35, 55]]) { g.beginPath(); g.arc(cx + 6, cy, r, 0, TAU); g.fillStyle = '#d07400'; g.fill(); g.beginPath(); g.arc(cx, cy, r, 0, TAU); const gr = g.createRadialGradient(cx - 20, cy - 20, 4, cx, cy, r); gr.addColorStop(0, '#fff6b0'); gr.addColorStop(0.5, '#ffc520'); gr.addColorStop(1, '#f39000'); g.fillStyle = gr; g.fill(); g.beginPath(); g.arc(cx, cy, r * 0.7, 0, TAU); g.lineWidth = 6; g.strokeStyle = '#f0a000'; g.stroke(); }
-  g.restore();
-}
 export function bubbleText(g, txt, x, y, size) {
   g.font = `${size}px LI, "Lilita One", Impact, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
   g.fillStyle = '#b8231a'; g.fillText(txt, x, y + size * 0.13); g.lineWidth = size * 0.1; g.strokeStyle = '#b8231a'; g.strokeText(txt, x, y + size * 0.13);
   const gr = g.createLinearGradient(0, y - size / 2, 0, y + size / 2); gr.addColorStop(0, '#fff27a'); gr.addColorStop(0.45, '#ffd21e'); gr.addColorStop(1, '#ff9a00'); g.lineWidth = size * 0.06; g.strokeStyle = '#e07000'; g.strokeText(txt, x, y); g.fillStyle = gr; g.fillText(txt, x, y);
 }
-function drawLC(g, game, S) {
-  const t = game.lcT, out = game.state === 'lcOut', fa = out ? clamp(1 - t / 0.35, 0, 1) : clamp(t / 0.25, 0, 1);
-  g.save(); g.globalAlpha = fa;
-  g.fillStyle = 'rgba(20,8,0,0.62)'; g.fillRect(0, 0, 864, 1920);
-  const ct = out ? 3 : t;
-  // 光芒
-  g.save(); g.translate(432, 800); const glow = g.createRadialGradient(0, 0, 10, 0, 0, 330); glow.addColorStop(0, 'rgba(255,240,170,0.95)'); glow.addColorStop(0.35, 'rgba(255,215,90,0.55)'); glow.addColorStop(1, 'rgba(255,200,60,0)'); g.fillStyle = glow; g.beginPath(); g.arc(0, 0, 330, 0, TAU); g.fill();
-  g.rotate(ct * 0.25); for (let i = 0; i < 18; i++) { g.rotate(TAU / 18); g.beginPath(); g.moveTo(0, 0); g.lineTo(330, -22); g.lineTo(330, 22); g.closePath(); const rg = g.createLinearGradient(0, 0, 330, 0); rg.addColorStop(0, 'rgba(255,250,200,0.55)'); rg.addColorStop(1, 'rgba(255,230,120,0)'); g.fillStyle = rg; g.fill(); } g.restore();
-  const pop = k => { const x = clamp(k, 0, 1); return x < 0.6 ? ease(x / 0.6) * 1.12 : 1.12 - 0.12 * ease((x - 0.6) / 0.4); };
-  coinStack(g, 432, 815, 1.25 * pop(ct / 0.4));
-  g.save(); const s1 = pop((ct - 0.05) / 0.35); g.translate(432, 315); g.scale(s1, s1); bubbleText(g, 'LEVEL', 0, 0, 104); g.restore();
-  g.save(); const s2 = pop((ct - 0.12) / 0.35); g.translate(432, 443); g.scale(s2, s2); bubbleText(g, 'COMPLETE', 0, 0, 104); g.restore();
-  g.font = '700 62px RB, Roboto, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.globalAlpha = fa * clamp((ct - 0.2) / 0.2, 0, 1); g.fillText(String(S.coinPerLevel), 432, 990); g.globalAlpha = fa;
-  // 彩带
-  if (game.confetti) for (const c of game.confetti) { const tt = Math.min(ct, 3); const x = c.x + c.vx * (1 - Math.exp(-tt * 2.2)) / 2.2 + Math.sin(tt * 3 + c.curl) * 20, y = c.y + c.vy * (1 - Math.exp(-tt * 2.2)) / 2.2 + 140 * tt * tt * 0.5 + 60 * tt; g.save(); g.globalAlpha = fa * clamp(2.6 - tt, 0, 1); g.translate(x, y); g.rotate(c.a + c.va * tt); g.scale(1, Math.cos(tt * 6 + c.curl)); g.fillStyle = c.c; g.fillRect(-c.w / 2, -c.h / 2, c.w, c.h); g.restore(); }
-  if (game.puffs) for (const p of game.puffs) { const tt = ct - p.d; if (tt < 0 || tt > 1.6) continue; g.save(); g.globalAlpha = fa * clamp(1 - tt / 1.6, 0, 1) * 0.95; g.fillStyle = '#fff'; const x = p.x + p.vx * tt, y = p.y + p.vy * tt, r = p.r * (0.6 + tt * 0.8); for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(x + Math.cos(k * 1.6) * r * 0.8, y + Math.sin(k * 1.6) * r * 0.6, r * 0.75, 0, TAU); g.fill(); } g.restore(); }
-  // 飞金币 + 计数
-  const ft = ct - 0.9; game.coinShown = game.coinFrom + (game.coins - game.coinFrom) * clamp(ft / 0.8, 0, 1);
-  coinPill(g, game, fa * clamp(ct / 0.3, 0, 1));
-  if (!out) for (let i = 0; i < 6; i++) { const k = clamp((ft - i * 0.1) / 0.45, 0, 1); if (k <= 0 || k >= 1) continue; const x = 432 + (60 - 432) * ease(k) + Math.sin(k * Math.PI) * (i % 2 ? 80 : -60), y = 815 + (161 - 815) * ease(k); drawCoin(g, x, y, 30, 0.1); }
-  // CONTINUE
-  const bt = ct - 0.9; if (bt > 0 || out) { const r = game.continueRect(); const sc = (out ? 1 : pop(bt / 0.3)) * (1 + 0.04 * Math.sin(Math.max(0, bt - 0.3) * 6)); g.save(); g.translate(432, 1170); g.scale(sc, sc); RR(g, -104, -40, 208, 88, 20); g.fillStyle = '#0a4b8a'; g.fill(); RR(g, -104, -44, 208, 84, 20); g.fillStyle = '#ffffff'; g.fill(); RR(g, -98, -38, 196, 72, 15); const bg = g.createLinearGradient(0, -38, 0, 34); bg.addColorStop(0, '#5ff0ff'); bg.addColorStop(1, '#13b4f0'); g.fillStyle = bg; g.fill(); RR(g, -90, -34, 180, 26, 12); g.fillStyle = 'rgba(255,255,255,0.3)'; g.fill(); g.font = '30px LI, "Lilita One", Impact, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 5; g.strokeStyle = '#0b5aa0'; g.strokeText('CONTINUE', 0, 0); g.fillStyle = '#fff'; g.fillText('CONTINUE', 0, 0); g.restore(); }
-  g.restore();
-}
-
-// 设计分辨率 864x1920（参考视频）；画布可设为 1080 宽等：按宽度等比缩放，纵向居中
 export function designLayout(cw, ch) { const s = Math.min(cw / 864, ch / 1920); return { s, ox: (cw - 864 * s) / 2, oy: (ch - 1920 * s) / 2 }; }
 
 function ringImg(kind, color) { const k = `ring_${kind}_${color}`; const A = asset(k); if (A) return { A, gray: false }; if (color === 'gray') { const B = asset(`ring_${kind}_cyan`); if (B) return { A: B, gray: true }; } return null; }

@@ -1,4 +1,5 @@
-import { LEVELS, SPECIAL_LEVELS } from './levels.js';
+import { LEVELS, SPECIAL_LEVELS, CLIP_NECK_LEN } from './levels.js';
+export { CLIP_NECK_LEN };
 const TAU = Math.PI * 2, D2R = Math.PI / 180;
 export const W0 = 864, H0 = 1920;
 const wrap = a => { a %= TAU; if (a > Math.PI) a -= TAU; if (a < -Math.PI) a += TAU; return a; };
@@ -19,7 +20,7 @@ export const GEO = {
   colX4: [170, 345, 520, 695], colX2: [345, 520],
 };
 export class Game {
-  constructor(S, sfx) { this.S = S; this.sfx = sfx || { play() { } }; this.levelIdx = 0; this.coins = S.coinStart; this.seed = 1; this.bgCache = null; this.spriteCache = {}; this.time = 0; this.events = []; }
+  constructor(S, sfx) { this.S = S; this.sfx = sfx || { play() { } }; this.levelIdx = 0; this.seed = 1; this.bgCache = null; this.spriteCache = {}; this.time = 0; this.events = []; }
   color(name) { const S = this.S; const m = { red: S.colRed, blue: S.colBlue, green: S.colGreen, yellow: S.colYellow, purple: S.colPurple, orange: S.colOrange, cyan: S.colCyan }; return m[name] || FIXED_COLORS[name] || name; }
   levels() { try { if (this.S.levelsJson && this.S.levelsJson.trim()) { const L = JSON.parse(this.S.levelsJson); if (Array.isArray(L) && L.length) return L; } } catch (e) { } return LEVELS; }
   emit(name, data) { this.events.push({ name, t: this.time, level: this.levelIdx + 1, ...data }); }
@@ -143,7 +144,6 @@ export class Game {
     this.rings.forEach(r => { if (r.alive && r.anchor && r.children.length && !r.children.some(c => c.alive) && S.shatter) this.shatter(r); });
     // 环空 & 无剩余
     if (this.state === 'play') { const left = this.balls.some(b => b.state !== 'boxed'); if (!left) { this.doneT += dt; if (this.doneT * 1000 >= S.lcDelay) this.levelComplete(); } }
-    if (this.state === 'lc') { if (this.lcT > 1.0 && !this.coinsAdded) { this.coinsAdded = true; } }
   }
   checkDetach() {
     for (const r of this.rings) { if (!r.alive || !r.p || r.closed) continue; if (r.hinge && this.S.hingeRelease === false) continue; /* 铰接环：缺口真正越过夹扣即脱开（环内剩余球随之洒出） */ const cw = this.clampWorld(r); const a = Math.atan2(cw[1] - r.c[1], cw[0] - r.c[0]); const loc = wrap(a - r.rot - r.gapC); const win = this.unlockWin(r); const prev = r._loc; r._loc = loc;

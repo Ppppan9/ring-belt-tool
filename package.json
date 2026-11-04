@@ -13,7 +13,8 @@
     "test:ae": "node test/ae.mjs",
     "test:3d": "node test/export3d.mjs",
     "test:h5": "node test/h5-export.mjs",
-    "test:all": "npm run build && npm test && npm run test:logic && npm run test:panel && npm run test:cursor && npm run test:ae && npm run test:3d && npm run test:h5",
+    "test:themes": "node test/themes.mjs",
+    "test:all": "npm run build && npm test && npm run test:themes && npm run test:logic && npm run test:panel && npm run test:cursor && npm run test:ae && npm run test:3d && npm run test:h5",
     "test:panel": "node test/panel.mjs"
   },
   "keywords": [],
