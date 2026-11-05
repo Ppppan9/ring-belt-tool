@@ -19,7 +19,7 @@ ok(d.h === 0.42 && d.img.startsWith('data:image'), 'default hand = shared DEFAUL
 // export / import / migrate
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rb'));
 const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#btnExport')]); const f = path.join(tmp, dl.suggestedFilename()); await dl.saveAs(f);
-const J = JSON.parse(fs.readFileSync(f, 'utf8')); ok(J.app === 'ring-belt' && J.version === 5 && !('coinStart' in J.settings) && !('coinPerLevel' in J.settings) && J.settings.theme === 'default' && J.settings && 'hideCursor' in J.settings && J.settings.unlockMargin === 3, 'export {app,version,settings}');
+const J = JSON.parse(fs.readFileSync(f, 'utf8')); ok(J.app === 'ring-belt' && J.version === 8 && !('coinStart' in J.settings) && !('coinPerLevel' in J.settings) && J.settings.theme === 'default' && J.settings && 'hideCursor' in J.settings && J.settings.unlockMargin === 3, 'export {app,version,settings}');
 const old = { app: 'ring-belt', version: 1, settings: { handImage: '__default__', handSize: 0.2, handAnchorX: 0.3, handAnchorY: 0.03, h5GameName: '圆环传送带', autoSpeed: 1.7 } };
 fs.writeFileSync(path.join(tmp, 'old.json'), JSON.stringify(old)); await p.setInputFiles('#importFile', path.join(tmp, 'old.json')); await p.waitForTimeout(500);
 const m = await p.evaluate(() => { const S = __S(); return { h: S.handSize, ax: S.handAnchorX, n: S.h5GameName, a: S.autoSpeed, img: S.handImage.slice(0, 10) }; });

@@ -1,9 +1,9 @@
 import { chromium } from 'playwright'; import path from 'path'; import fs from 'fs';
 export const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-export async function open(q = '?det&seed=3', vp = { width: 1400, height: 1000 }) {
+export async function open(q = '?det&seed=3', vp = { width: 1400, height: 1000 }, file = 'index.html') {
   const b = await chromium.launch(); const ctx = await b.newContext({ viewport: vp, acceptDownloads: true }); const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => m.type() === 'error' && errs.push(m.text()));
-  await p.goto('file://' + path.join(ROOT, 'index.html') + q); await p.waitForFunction(() => window.__ready, null, { timeout: 20000 });
+  await p.goto('file://' + path.join(ROOT, file || 'index.html') + q); await p.waitForFunction(() => window.__ready, null, { timeout: 20000 });
   return { b, p, errs };
 }
 let nOk = 0, nFail = 0;

@@ -21,7 +21,7 @@ const th = await p.evaluate(async () => { const c = document.querySelector('.the
 ok(th.want === th.got && th.on, `主题卡片切换到 ${th.got}`);
 ok(errs.length === 0, '无页面错误 ' + errs.join('|'));
 // 截图：全部展开（含高级）
-await p.evaluate(() => { __setSettings({ theme: 'realistic' }); document.querySelectorAll('#panelBody details').forEach(d => d.open = true); });
+await p.evaluate(() => { __setSettings({ theme: 'jade' }); document.querySelectorAll('#panelBody details').forEach(d => d.open = true); });
 await p.waitForTimeout(300);
 const ph = await p.evaluate(() => document.getElementById('panelBody').scrollHeight + document.getElementById('panelHead').offsetHeight + 40);
 await p.setViewportSize({ width: 1400, height: Math.min(ph, 7000) }); await p.waitForTimeout(400);

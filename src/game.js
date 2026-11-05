@@ -33,7 +33,7 @@ export class Game {
     }
     let cmap = {}; try { cmap = JSON.parse(this.S.colorMap || '{}'); } catch (e) { } const mc = c => cmap[c] || c; lv.rings.forEach(r => r.color = mc(r.color)); lv.boxes = lv.boxes.map(col => col.map(mc));
     if (this.S.useArtGap) lv.rings.forEach(r => { if (r.gap) r.gap[1] = this.S.useArtGap; });
-    this.lv = lv; this.ballR = lv.ballR || this.S.ballRadius; this.beltR = this.S.beltBallR || 26;
+    this.lv = lv; this.ballR = lv.ballR || this.S.ballRadius; this.beltR = this.S.beltBallR || 16.5;
     this.rings = lv.rings.map(r => ({ ...r, c: [r.x, r.y], rot: 0, gapC: r.gap ? r.gap[0] * D2R : 0, gapW: r.gap ? r.gap[1] * D2R : 0, alive: true, children: [], hl: 0, omega: 0 }));
     const byId = {}; this.rings.forEach(r => byId[r.id] = r);
     this.rings.forEach(r => { if (r.parent) { const p = byId[r.parent]; r.p = p; p.children.push(r); const a = Math.atan2(p.c[1] - r.c[1], p.c[0] - r.c[0]); r.clampW = [r.c[0] + r.R * Math.cos(a), r.c[1] + r.R * Math.sin(a)]; r.clampLocal = [r.clampW[0] - p.c[0], r.clampW[1] - p.c[1]]; } });
@@ -44,7 +44,7 @@ export class Game {
     const cols = lv.boxes.length; const xs = cols <= 2 ? GEO.colX2 : cols === 3 ? [258, 432, 606] : GEO.colX4;
     this.cols = lv.boxes.map((col, i) => ({ x: xs[i] ?? (100 + i * 175), stack: col.map(c => ({ color: c, n: 0, pend: 0 })), shift: 0 }));
     this.flyBricks = []; this.shards = []; this.stars = []; this.drops = [];
-    this.belt = { off: 0, slots: new Array(this.S.beltSlots).fill(null), cap: lv.beltSlots || 0 }; /* 关卡 beltSlots=传送带容量(同时可载球数)；孔距/外观保持标准格数不变 */
+    this.belt = { off: 0, slots: new Array(this.S.beltSlots).fill(null), cap: lv.beltSlots ?? (this.S.beltCap ?? 6) }; /* 关卡 beltSlots=传送带容量(同时可载球数)；孔距/外观保持标准格数不变 */
     this.state = 'play'; this.doneT = 0; this.lcT = 0; this.hintOn = this.levelIdx === 0 && this.S.showHint; this.drag = null; this.levelTime = 0;
     // 预先沉降
     for (let i = 0; i < 180; i++) this.physics(1 / 120);
@@ -73,10 +73,10 @@ export class Game {
     const rec = q => { q.children.forEach(ch => { if (!ch.alive) return; rot(ch, r.c[0], r.c[1]); ch.rot += d; rec(ch); }); };
     rec(r);
   }
-  clampWorld(r) { const p = r.p, c = Math.cos(p.rot), s = Math.sin(p.rot), [x, y] = r.clampLocal; return [p.c[0] + x * c - y * s, p.c[1] + x * s + y * c]; }
+  clampWorld(r) { if (!r.alive && r._frz) return r._frz.cw; const p = r.p, c = Math.cos(p.rot), s = Math.sin(p.rot), [x, y] = r.clampLocal; return [p.c[0] + x * c - y * s, p.c[1] + x * s + y * c]; }
   ringBalls(r) { const lim = r.R - this.S.ringThick / 2; return this.balls.filter(b => b.state === 'free' && Math.hypot(b.x - r.c[0], b.y - r.c[1]) < lim).length; }
   shatter(r) {
-    if (!r.alive) return; r.alive = false; this.sfx.play('shatter'); this.emit('shatter', { ring: r.id });
+    if (!r.alive) return; this.freezeClip(r); r.alive = false; this.sfx.play('shatter'); this.emit('shatter', { ring: r.id });
     const T = this.S.ringThick, col = this.color(r.color), a0 = r.rot + r.gapC + (r.closed ? 0 : r.gapW / 2), span = r.closed ? TAU : TAU - r.gapW;
     const n = Math.max(8, Math.round(span * r.R / 26));
     for (let i = 0; i < n; i++) { const a = a0 + span * (i + 0.5) / n, x = r.c[0] + r.R * Math.cos(a), y = r.c[1] + r.R * Math.sin(a), sp = 80 + this.rand() * 260, da = a + (this.rand() - 0.5) * 1.5;
@@ -151,6 +151,7 @@ export class Game {
       const crossed = prev != null && Math.sign(prev) !== Math.sign(loc) && Math.abs(prev) < r.gapW / 2 && Math.abs(loc) < r.gapW / 2;
       if (Math.abs(loc) <= win || crossed) { this.detach(r); } }
   }
+  freezeClip(r) { /* 夹扣固定在场景：环脱落后夹扣(及颈部)冻结在脱落瞬间的屏幕位置/朝向，父环再转也不跟着转 */ if (r.p && r.clampLocal && !r._frz) r._frz = { cw: this.clampWorld(r), prot: r.p.rot }; }
   clipClear(r) { // 缺口端头圆角半径 + 夹子方块半宽（按美术：管粗 50、夹块宽 68，环图中心线半径 151）
     const k = r.R / 151, T = this.S.ringThick; return Math.max(T, (25 + 34 * (r.clampScale || 1)) * k); }
   // 被两个及以上夹扣同时约束（作为被夹环 + 夹着别的环，都算）的环不能转动
@@ -159,7 +160,7 @@ export class Game {
   isLocked(r) { return this.S.lockMultiJoint !== false && this.joints(r) > 1; }
   unlockWin(r) { const m = (this.S.unlockMargin ?? 3) * D2R; return Math.max(0.5 * D2R, r.gapW / 2 - Math.asin(Math.min(1, this.clipClear(r) / r.R)) - m);
   }
-  detach(r) { if (this.drag && this.drag.ring === r) this.drag = null; if (this.S.shatter) this.shatter(r); else { r.alive = false; } this.emit('detach', { ring: r.id }); }
+  detach(r) { if (this.drag && this.drag.ring === r) this.drag = null; if (this.S.shatter) this.shatter(r); else { this.freezeClip(r); r.alive = false; } this.emit('detach', { ring: r.id }); }
   levelComplete() { /* 不再有结算/奖励页：过关后停在完成盘面（环全碎、球入盒），手动点面板“⏭ 下一关”才换关；自动通关/录制时自动续关 */ this.state = 'lc'; this.lcT = 0; this.confetti = []; this.puffs = []; this.lcCount = (this.lcCount || 0) + 1; this.lastLC = { level: this.levelIdx + 1, levelTime: this.levelTime }; this.sfx.play('complete'); this.emit('levelComplete'); }
   continueNext() { if (this.state !== 'lc') return false; const L = this.levels(); let n = this.levelIdx + 1; if (n >= L.length) { if (!this.S.loopLevels) return false; n = 0; } this.prevSnapshot = true; this.loadLevel(n); this.state = 'lcOut'; this.lcT = 0; return true; }
   continueRect() { return { x: 432 - 104, y: 1170 - 44, w: 208, h: 88 }; }

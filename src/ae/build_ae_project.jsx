@@ -100,6 +100,10 @@
     var scriptFile = new File($.fileName);
     var baseDir = scriptFile.parent;
     var tlFile = new File(baseDir.fsName + "/timeline.json");
+    if (!tlFile.exists) { // 从 ExtendScript Toolkit / VS Code 运行时 $.fileName 可能不是脚本所在目录：让用户手动选择解压目录
+        var pick = Folder.selectDialog("请选择包含 timeline.json 的解压目录");
+        if (pick) { baseDir = pick; tlFile = new File(baseDir.fsName + "/timeline.json"); }
+    }
     if (!tlFile.exists) { alert("找不到 timeline.json，请把本脚本与 timeline.json、assets、audio 文件夹放在同一目录后再运行。", SCRIPT_NAME); return; }
     var TL;
     try { TL = parseJSON(readText(tlFile)); } catch (e) { alert(e.toString(), SCRIPT_NAME); return; }
@@ -193,7 +197,7 @@
                 doc = stp.value; doc.text = src.text.v[q];
                 try { doc.font = src.text.font; } catch (eF) {}
                 doc.fontSize = src.text.size; doc.applyFill = true; doc.fillColor = src.text.fill;
-                doc.applyStroke = true; doc.strokeColor = src.text.stroke; doc.strokeWidth = src.text.strokeWidth; doc.strokeOverFill = false;
+                if (src.text.stroke && src.text.strokeWidth > 0) { try { doc.applyStroke = true; doc.strokeColor = src.text.stroke; doc.strokeWidth = src.text.strokeWidth; doc.strokeOverFill = false; } catch (eSt) {} } else { doc.applyStroke = false; }
                 doc.justification = ParagraphJustification.CENTER_JUSTIFY;
                 if (src.text.t.length > 1) { stp.setValueAtTime(src.text.t[q], doc); } else { stp.setValue(doc); }
             }
@@ -257,7 +261,10 @@
 
     var msg = "完成！\n图层：" + stats.layers + "　关键帧：" + stats.keys + "　标记：" + stats.markers;
     if (savedTo) { msg += "\n已保存：" + savedTo; }
-    if (missing.length) { msg += "\n缺少素材 " + missing.length + " 个（例如 " + missing[0] + "）"; }
+    if (missing.length) {
+        msg += "\n缺少素材 " + missing.length + " 个（完整清单见 missing_assets.txt）：\n" + missing.slice(0, 12).join("\n");
+        try { var mf = new File(baseDir.fsName + "/missing_assets.txt"); mf.encoding = "UTF-8"; if (mf.open("w")) { mf.write("Missing files (" + missing.length + "):\n" + missing.join("\n") + "\n\nBase folder: " + baseDir.fsName + "\n"); mf.close(); } } catch (eMf) {}
+    }
     if (warnings.length) { msg += "\n警告 " + warnings.length + " 条：\n" + warnings.slice(0, 8).join("\n"); }
     alert(msg, SCRIPT_NAME);
     $.global.__RING_BELT_BUILD_STATS = stats; // 便于自动化测试读取

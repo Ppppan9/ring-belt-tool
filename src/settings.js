@@ -7,15 +7,21 @@ export const DEFAULT_HAND_SIZE = 0.42, DEFAULT_HAND_ANCHOR_X = 0.2204, DEFAULT_H
 export const TOOL_ID = 'ring-belt';
 export const TOOL_ZH = '解环传送带';
 export const TOOL_EN = 'RingBelt';
-export const SETTINGS_VERSION = 5;
+export const SETTINGS_VERSION = 8;
 const LS_KEY = 'ring-belt-settings';
-// [key, label, type, default, extra]   type: num/bool/select/text/file/button/area/color
+// [key, label, type, default, extra]   type: num/range/bool/select/text/file/button/area/color
 // extra.adv = true → 不常用参数，面板上统一收进底部折叠的「高级设置」（按原分组小标题列出）；
 // 规则（TOOLKIT_STANDARD §面板分层）：基础调整 + 影响动画/导出的参数留在外面，物理内部参数/调试项进高级设置。
 export const ADV_GROUP = '高级设置';
 export const SCHEMA = [
   ['主题', [
     ['theme', '美术主题（实时切换，录制/AE/3D/H5 导出均使用当前主题）', 'select', 'default', { options: THEME_OPTIONS }],
+    ['beltFaceBright', '传送带带面·明度（玉石主题）', 'range', 1, { min: 0.3, max: 2, step: 0.01 }],
+    ['beltFaceSat', '传送带带面·饱和度', 'range', 1, { min: 0, max: 2.5, step: 0.01 }],
+    ['beltFaceHue', '传送带带面·色相(°)', 'range', 0, { min: -180, max: 180, step: 1 }],
+    ['beltFaceContrast', '传送带带面·对比度', 'range', 1, { min: 0.3, max: 2, step: 0.01, adv: true }],
+    ['beltFaceImage', '传送带带面·替换图片(PNG/JPG，自动缩放压缩)', 'file', ''],
+    ['_beltFaceReset', '带面恢复默认', 'button', null],
   ]],
   ['关卡与玩法', [
     ['canvasW', '画布宽(px)', 'num', 864, { min: 360, max: 2160, step: 1 }],
@@ -126,6 +132,8 @@ export function migrate(raw) {
   const v = raw && raw.version || 0, src = Object.assign({}, (raw && raw.settings) || {}); REMOVED.forEach(k => delete src[k]);
   for (const [ok, [nk, fn]] of Object.entries(RENAMES)) if (ok in src && !(nk in src)) { src[nk] = fn ? fn(src[ok]) : src[ok]; delete src[ok]; }
   for (let ver = v; ver < SETTINGS_VERSION; ver++) { const od = OLD_DEFAULTS[ver] || {}; for (const k in od) if (k in src && src[k] === od[k]) src[k] = DEFAULTS[k]; }
+  for (const [k, lo, hi] of [['beltFaceBright', 0.3, 2], ['beltFaceSat', 0, 2.5], ['beltFaceHue', -180, 180], ['beltFaceContrast', 0.3, 2]]) if (k in src) { const n = +src[k]; src[k] = isFinite(n) ? Math.min(hi, Math.max(lo, n)) : DEFAULTS[k]; } // v7：带面调色
+  if (src.theme === 'original-ui') src.theme = 'default'; if (src.theme === 'realistic') src.theme = 'default'; // v8：超写实主题已删除，回落原版；v6：原创UI 主题已被「玉石」替换，旧存档回落到原版
   const out = {};
   for (const k in DEFAULTS) out[k] = (k in src) ? src[k] : DEFAULTS[k];
   return out;

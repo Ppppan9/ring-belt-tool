@@ -1,14 +1,14 @@
-import { SCHEMA, DEFAULTS, TOOL_ID, TOOL_ZH, SETTINGS_VERSION, loadSettings, saveSettings, exportSettingsJSON, importSettingsJSON } from './settings.js';
+import { SCHEMA, DEFAULTS, TOOL_ID, TOOL_ZH, SETTINGS_VERSION, loadSettings, saveSettings, exportSettingsJSON, importSettingsJSON, migrate } from './settings.js';
 import { Game, TAU, wrap, clamp, ease } from './game.js';
 import { makeBackground, designLayout } from './render.js';
 import { Sfx } from './sfx.js';
 import { DEFAULT_HAND } from './default_hand.js';
 import { assetsReady } from './assets.js';
-import { setTheme, themeAssetsReady } from './themes.js';
+import { setTheme, spritePrefix, cpuBench, runJob, THEMES, themeAssetsReady, setBeltLook, beltImageReady, beltRect, beltLook } from './themes.js';
 import { ADV_GROUP } from './settings.js';
-import { enhanceSections, makeSwitch, themePicker, panelEntrance, bindPress } from './panelfx.js';
+import { enhanceSections, makeSwitch, themePicker, panelEntrance, bindPress, themeCrossfade, levelFade, themeProgress } from './panelfx.js';
 import { clipGeom } from './items.js';
-import { frameItems, drawItems, clearSprites, allSprites, resetSpriteArchive, VIEW } from './items.js';
+import { frameItems, drawItems, clearSprites, allSprites, resetSpriteArchive, VIEW, useSpriteStore, cancelSpriteJobs, beginBudget, endBudget, BUDGET } from './items.js';
 import { createAERecorder } from './ae/recorder.js';
 import { export3D } from './export3d/export3d.js';
 import { applyPlayableMode, isPlayableNoHand, exportH5PlayableFromPage, bindEditorDevicePreview, markH5DeviceCustomIfSizeEdited, applyH5DevicePresetToSettings } from './h5/index.js';
@@ -21,8 +21,32 @@ const sfx = new Sfx(() => S);
 const game = new Game(S, sfx);
 sfx.clock = () => game.time; // 音效节流按游戏时间（确定性）
 let bg = null, handImg = null;
-function applyCanvas() { cv.width = S.canvasW; cv.height = S.canvasH; setTheme(S.theme); game.spriteCache = {}; bg = makeBackground(864, 1920); clearSprites(); }
-function applyTheme() { setTheme(S.theme); game.spriteCache = {}; clearSprites(); bg = makeBackground(864, 1920); }
+// 带面上传图异步解码：解码完再重建一次背景（避免首帧用默认带面）
+// phase16：背景按 主题+带面外观 缓存；精灵仓库按设置签名分库（切主题不清空）；交互模式下缺失材质分帧生成
+const bgCache = new Map(); let bgJob = null;
+const bgKey = () => S.theme + '|' + JSON.stringify(beltLook());
+const spriteSig = () => JSON.stringify([Object.keys(S).filter(k => k.startsWith('col')).sort().map(k => S[k]), S.ringThick, S.boxCapacity]);
+function setBg(c) { bg = c; bgJob = null; const k = bgKey(); bgCache.delete(k); bgCache.set(k, c); while (bgCache.size > 6) bgCache.delete(bgCache.keys().next().value); return c; }
+const syncBg = () => setBg(makeBackground(864, 1920));
+const ASYNC = !DET && !window.__PLAYABLE__;
+const detectSlow = () => { BUDGET.slow = Q.get('quality') === 'low' || (Q.get('quality') !== 'high' && cpuBench() > 12); }; detectSlow();
+function beltLate() { if (S.beltFaceImage && !beltLook().imgLoaded) beltImageReady().then(() => { syncBg(); clearSprites(); }); }
+function applyCanvas() { cv.width = S.canvasW; cv.height = S.canvasH; setTheme(S.theme); setBeltLook(S); useSpriteStore(spriteSig()); game.spriteCache = {}; syncBg(); clearSprites(); beltLate(); }
+let prog = null, progOn = false;
+function applyTheme(async = false) {
+  const prevP = spritePrefix(); setTheme(S.theme); setBeltLook(S); useSpriteStore(spriteSig()); cancelSpriteJobs(); bgJob = null;
+  BUDGET.fbPrefix = async && prevP !== spritePrefix() ? prevP : null; BUDGET.made = 0;
+  const k = bgKey(); if (bgCache.has(k)) bg = bgCache.get(k); else if (async) bgJob = { k, memo: new Map() }; else syncBg();
+  if (async) { progOn = true; detectSlow(); } beltLate();
+}
+function runBg() { if (!bgJob || performance.now() >= BUDGET.deadline) return; const j = bgJob, r = runJob(j.memo, BUDGET.deadline, () => makeBackground(864, 1920), BUDGET.slow ? 1 : 0); if (r && bgJob === j) { setBg(r.v); BUDGET.made++; } }
+const themeBusy = () => !!bgJob || BUDGET.pending > 0;
+function progress() {
+  if (!progOn) return; prog = prog || themeProgress(cv);
+  if (!themeBusy()) { progOn = false; prog.end(); BUDGET.fbPrefix = null; return; }
+  const name = (THEMES[S.theme] || {}).name || S.theme, lq = BUDGET.lqPending > 0 || !!bgJob;
+  prog.update(lq ? `正在生成${name}材质…` : `正在精修${name}材质…`, BUDGET.made, BUDGET.made + BUDGET.pending + (bgJob ? 1 : 0));
+}
 function loadHand() { const v = S.handImage; if (!v || isPlayableNoHand()) { handImg = null; return; } const im = new Image(); im.src = v === '__default__' ? DEFAULT_HAND : v; handImg = im; clearSprites(); }
 function rnd(a, b) { return a + Math.random() * (b - a); }
 function toast(m, ms = 2600) { const t = $('toast'); if (!t) return; t.textContent = m; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), ms); }
@@ -101,7 +125,7 @@ function buildUI() {
   ui.recBtn = $('btnRec'); ui.recBtn.onclick = () => rec ? stopRec() : startRec();
   $('btnRestart').onclick = () => { autoStop(); restart(); };
   $('btnNew').onclick = () => { autoStop(); newRound(); };
-  $('btnNext').onclick = () => { autoStop(); game.loadLevel((game.levelIdx + 1) % game.levels().length); };
+  $('btnNext').onclick = () => { autoStop(); levelFade(cv, DET); game.loadLevel((game.levelIdx + 1) % game.levels().length); };
   $('btnShot').onclick = () => cv.toBlob(b => download(b, `${TOOL_ID}_${stamp()}.png`));
   $('btnExport').onclick = () => download(new Blob([exportSettingsJSON(S)], { type: 'application/json' }), `${TOOL_ID}_settings_${stamp()}.json`);
   const imp = $('importFile'); $('btnImport').onclick = () => imp.click();
@@ -109,7 +133,12 @@ function buildUI() {
   $('btnReset').onclick = () => { if (DET || confirm('恢复全部默认设置？')) { S = { ...DEFAULTS }; onSettings(true); toast('已恢复默认'); } };
   buildPanel(); bindPress(document.getElementById('panelHead')); if (!buildPanel.entered) { buildPanel.entered = 1; panelEntrance(); }
 }
-const ACTIONS = { _aeToggle: () => ae.rec ? aeStop() : aeStart(), _aeExport: () => aeExport().catch(e => toast('AE 导出失败：' + e.message)), _export3d: () => do3D().catch(e => toast('3D 导出失败：' + e.message)), _exportH5: () => exportH5().catch(e => toast('H5 导出失败：' + e.message)) };
+// 上传的带面图：等比缩到 ≤maxW×maxH 再转 JPEG（PNG 带透明则保留 PNG），避免 H5/AE 包体膨胀
+function shrinkImage(url, maxW, maxH) { return new Promise(res => { const im = new Image(); im.onload = () => { const sc = Math.min(1, maxW / im.width, maxH / im.height), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(im.width * sc)); c.height = Math.max(1, Math.round(im.height * sc)); const g = c.getContext('2d'); g.drawImage(im, 0, 0, c.width, c.height); const png = /^data:image\/png/.test(url); res(c.toDataURL(png ? 'image/png' : 'image/jpeg', 0.86)); }; im.onerror = () => res(url); im.src = url; }); }
+const BELT_KEYS = new Set(['beltFaceBright', 'beltFaceSat', 'beltFaceHue', 'beltFaceContrast', 'beltFaceImage']);
+let beltT = 0;
+function applyBelt() { if (!setBeltLook(S)) return; beltImageReady().then(() => { syncBg(); clearSprites(); }); }
+const ACTIONS = { _beltFaceReset: () => { for (const k of BELT_KEYS) S[k] = DEFAULTS[k]; onSettings(true); }, _aeToggle: () => ae.rec ? aeStop() : aeStart(), _aeExport: () => aeExport().catch(e => toast('AE 导出失败：' + e.message)), _export3d: () => do3D().catch(e => toast('3D 导出失败：' + e.message)), _exportH5: () => exportH5().catch(e => toast('H5 导出失败：' + e.message)) };
 function buildPanel() {
   const P = $('panelBody'); P.innerHTML = '';
   const advD = document.createElement('details'); advD.className = 'adv'; advD.id = 'advSettings'; advD.open = !!buildPanel.advOpen; advD.ontoggle = () => { buildPanel.advOpen = advD.open; };
@@ -124,11 +153,12 @@ function buildPanel() {
       else if (t === 'bool') { inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!S[k]; inp.onchange = () => set(k, inp.checked); row.classList.add('t-switch'); }
       else if (t === 'select') { inp = document.createElement('select'); ex.options.forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; inp.appendChild(o); }); inp.value = S[k]; inp.onchange = () => set(k, typeof def === 'number' ? +inp.value : inp.value); }
       else if (t === 'num') { inp = document.createElement('input'); inp.type = 'number'; Object.assign(inp, { min: ex.min, max: ex.max, step: ex.step }); inp.value = S[k]; inp.onchange = () => set(k, +inp.value); }
+      else if (t === 'range') { inp = document.createElement('span'); inp.className = 'rng'; const r = document.createElement('input'); r.type = 'range'; Object.assign(r, { min: ex.min, max: ex.max, step: ex.step }); r.value = S[k]; r.dataset.key = k; const o = document.createElement('output'); const fmt = v => (+v).toFixed(ex.step >= 1 ? 0 : 2); o.textContent = fmt(S[k]); r.oninput = () => { o.textContent = fmt(r.value); set(k, +r.value); }; inp.append(r, o); }
       else if (t === 'color') { inp = document.createElement('input'); inp.type = 'color'; inp.value = S[k]; inp.oninput = () => set(k, inp.value); }
       else if (t === 'area') { inp = document.createElement('textarea'); inp.value = S[k]; inp.onchange = () => set(k, inp.value); }
-      else if (t === 'file') { inp = document.createElement('span'); const f = document.createElement('input'); f.type = 'file'; f.accept = 'image/*'; f.onchange = () => { const r = new FileReader(); r.onload = () => set(k, r.result); r.readAsDataURL(f.files[0]); }; const c = document.createElement('button'); c.textContent = '内置'; c.onclick = e => { e.preventDefault(); set(k, k === 'handImage' ? DEFAULT_HAND : ''); }; const x = document.createElement('button'); x.textContent = '清除'; x.onclick = e => { e.preventDefault(); set(k, ''); }; inp.append(f, c, x); }
+      else if (t === 'file') { inp = document.createElement('span'); const f = document.createElement('input'); f.type = 'file'; f.accept = 'image/*'; f.onchange = () => { const r = new FileReader(); r.onload = () => k === 'beltFaceImage' ? shrinkImage(r.result, 900, 200).then(u => set(k, u)) : set(k, r.result); r.readAsDataURL(f.files[0]); }; const c = document.createElement('button'); c.textContent = '内置'; c.onclick = e => { e.preventDefault(); set(k, k === 'handImage' ? DEFAULT_HAND : ''); }; if (k === 'beltFaceImage') c.textContent = '默认'; const x = document.createElement('button'); x.textContent = '清除'; x.onclick = e => { e.preventDefault(); set(k, ''); }; inp.append(f, c, x); }
       else { inp = document.createElement('input'); inp.type = 'text'; inp.value = S[k]; inp.onchange = () => set(k, inp.value); }
-      if (t !== 'button') inp.dataset.key = k; if (ex.adv) row.dataset.adv = '1';
+      if (t !== 'button' && t !== 'range') inp.dataset.key = k; if (ex.adv) row.dataset.adv = '1';
       if (t === 'bool') { row.appendChild(makeSwitch(inp)); host.appendChild(row); continue; }
       if (k === 'theme') { const tp = themePicker(inp, ex.options); tp.prepend(sp); sp.className = 'tp-l'; host.appendChild(tp); continue; }
       row.classList.add('t-' + t); row.appendChild(inp); host.appendChild(row);
@@ -141,7 +171,7 @@ function buildPanel() {
 }
 const RELOAD_KEYS = new Set(['levelsJson', 'beltSlots', 'ballRadius', 'ringThick', 'colorMap', 'useArtGap', 'startLevel', 'boxCapacity']);
 function set(k, v) { S[k] = v; if (k === 'h5Device') applyH5DevicePresetToSettings(S); if (k === 'h5DeviceW' || k === 'h5DeviceH') markH5DeviceCustomIfSizeEdited(S); onSettings(k.startsWith('h5Device'), k); }
-function onSettings(rebuild, k) { game.S = S; saveSettings(S); if (rebuild) buildPanel(); if (rebuild || k === 'canvasW' || k === 'canvasH') applyCanvas(); else if (k === 'theme') applyTheme(); if (rebuild || (k && (k.startsWith('col') || k === 'ringThick' || k === 'boxCapacity'))) { game.spriteCache = {}; clearSprites(); } if ((rebuild && k !== 'h5Device' && !(k || '').startsWith('h5Device')) || RELOAD_KEYS.has(k)) game.loadLevel(rebuild ? S.startLevel - 1 : game.levelIdx); if (rebuild || k === 'handImage' || (k || '').startsWith('hand')) loadHand(); if (!S.manualHand && !auto) finger.visible = false; if (window.__h5EditorDeviceFit) window.__h5EditorDeviceFit(); updateCursor(); }
+function onSettings(rebuild, k) { game.S = S; saveSettings(S); if (rebuild) buildPanel(); if (rebuild || k === 'canvasW' || k === 'canvasH') applyCanvas(); else if (BELT_KEYS.has(k)) { clearTimeout(beltT); beltT = setTimeout(applyBelt, k === 'beltFaceImage' ? 0 : 40); } else if (k === 'theme') { const fin = themeCrossfade(cv, DET || !!auto || !!rec); applyTheme(ASYNC); fin(); } if (rebuild || (k && (k.startsWith('col') || k === 'ringThick' || k === 'boxCapacity'))) { game.spriteCache = {}; clearSprites(); } if ((rebuild && k !== 'h5Device' && !(k || '').startsWith('h5Device')) || RELOAD_KEYS.has(k)) game.loadLevel(rebuild ? S.startLevel - 1 : game.levelIdx); if (rebuild || k === 'handImage' || (k || '').startsWith('hand')) loadHand(); if (!S.manualHand && !auto) finger.visible = false; if (window.__h5EditorDeviceFit) window.__h5EditorDeviceFit(); updateCursor(); }
 async function exportH5() { return exportH5PlayableFromPage({ toolId: TOOL_ID, S: { ...S, app: TOOL_ID }, status, toast, stripDataUrls: [DEFAULT_HAND] }); }
 
 // ---------------- 主循环 ----------------
@@ -154,15 +184,23 @@ function frame(dt) {
   drawItems(g, curItems); if (ae.rec) ae.sample(game.time * 1000); updateCursor();
 }
 let last = 0;
-function loop(t) { const dt = Math.min(1 / 30, (t - (last || t)) / 1000); last = t; frame(dt); requestAnimationFrame(loop); }
+let FMAX = {}; window.__fmax = () => { const r = FMAX; FMAX = {}; return r; };
+const BUDGET_MS = +(Q.get('budget') || 28); // 每帧材质生成时间片（ms，墙钟）
+const BUDGET_SLOW = +(Q.get('budgetSlow') || 48); // 慢设备：帧本身 ~30ms，时间片放大到 48ms → 单帧仍 < 100ms，吞吐 ≈ ×1.7
+function loop(t) { const dt = Math.min(1 / 30, (t - (last || t)) / 1000); last = t; const a0 = performance.now(); beginBudget(BUDGET.slow ? BUDGET_SLOW : BUDGET_MS); let a1 = a0; try { runBg(); a1 = performance.now(); frame(dt); } finally { endBudget(); } progress(); const a2 = performance.now(); if (a2 - a0 > (FMAX.ms || 0)) FMAX = { ms: a2 - a0, bg: a1 - a0, fr: a2 - a1, last: (BUDGET.log || []).slice(-2) }; requestAnimationFrame(loop); }
 // 测试钩子
 window.__game = game; window.__S = () => S; window.__finger = finger; window.__ae = ae; window.__items = () => curItems;
 window.__toClient = (x, y) => { const b = cv.getBoundingClientRect(); const L = designLayout(cv.width, cv.height); return [b.left + (x * L.s + L.ox) * b.width / cv.width, b.top + (y * L.s + L.oy) * b.height / cv.height]; };
 window.__step = (n = 1, dt = 1 / 50) => { for (let i = 0; i < n; i++) frame(dt); };
-window.__auto = on => on ? autoStart() : autoStop();
+window.__auto = on => on ? autoStart() : autoStop(); window.__autoState = () => auto && { step: auto.step, t: auto.t };
 window.__setSettings = o => { Object.assign(S, o); onSettings(true); };
+window.__migrate = migrate;
 window.__clipNecks = () => game.rings.filter(r => r.p && r.clampLocal).map(r => ({ id: r.id, ...clipGeom(r), centerErr: r._clipC ? Math.abs(Math.hypot(r._clipC[0] - r.c[0], r._clipC[1] - r.c[1]) - r.R) : -1 }));
+window.__bg = () => bg; window.__beltRect = beltRect;
+// 带面平均色（测试/截图用）：取带面上半 60%×25% 区域（避开中间金导轨）
+window.__beltAvg = (c = bg) => { const R = beltRect(); if (!R || !c) return null; const sx = c.width / 864, x = (R.x + R.w * 0.2) * sx, y = (R.y + R.h * 0.1) * sx, d = c.getContext('2d').getImageData(x | 0, y | 0, (R.w * 0.6 * sx) | 0, (R.h * 0.25 * sx) | 0).data; const s = [0, 0, 0]; for (let i = 0; i < d.length; i += 4) { s[0] += d[i]; s[1] += d[i + 1]; s[2] += d[i + 2]; } const n = d.length / 4; return s.map(v => Math.round(v / n)); };
 window.__spriteKeys = () => Object.keys(allSprites());
+window.__themeBusy = themeBusy; window.__jobLog = () => BUDGET.log || []; window.__themeJob = () => ({ busy: themeBusy(), bg: !!bgJob, pending: BUDGET.pending, lqPending: BUDGET.lqPending, made: BUDGET.made, slow: BUDGET.slow, bgCached: bgCache.size, progress: prog ? { visible: prog.visible, text: prog.text } : null });
 window.__aeStart = aeStart; window.__aeStop = aeStop; window.__aeExport = aeExport; window.__export3d = do3D; window.__exportH5 = exportH5; window.__startRec = startRec; window.__stopRec = stopRec;
 window.__app = { TOOL_ID, SETTINGS_VERSION, APP_VERSION };
 
@@ -176,4 +214,4 @@ const PLAY = applyPlayableMode({
 });
 if (!PLAY) { buildUI(); bindEditorDevicePreview(() => S); } else { ui.autoBtn = { textContent: '' }; ui.recBtn = { textContent: '' }; }
 applyCanvas(); loadHand(); updateCursor();
-Promise.all([assetsReady(), themeAssetsReady()]).then(() => { applyTheme(); if (Q.has('seed')) Math.random = (() => { let s = +Q.get('seed') || 1; return () => (s = (s * 16807) % 2147483647) / 2147483647; })(); restart(); window.__ready = true; if (!DET) requestAnimationFrame(loop); else frame(0); });
+setBeltLook(S); Promise.all([assetsReady(), themeAssetsReady(), beltImageReady()]).then(() => { applyTheme(ASYNC); if (Q.has('seed')) Math.random = (() => { let s = +Q.get('seed') || 1; return () => (s = (s * 16807) % 2147483647) / 2147483647; })(); restart(); window.__ready = true; if (!DET) requestAnimationFrame(loop); else frame(0); });

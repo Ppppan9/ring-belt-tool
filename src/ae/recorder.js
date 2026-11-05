@@ -9,6 +9,8 @@ const LABEL = { background: 15, pit: 15, box: 9, ball: 2, ring: 1, ringhl: 11, l
 const CN = { red: '红', orange: '橙', green: '绿', blue: '蓝', cyan: '青', purple: '紫', gray: '灰', yellow: '黄', pink: '粉' };
 const T = { background: ['背景', 'Background'], pit: ['传送带凹槽', 'BeltPit'], box: ['盒子', 'Box'], ball: ['球', 'Ball'], ring: ['圆环', 'Ring'], ringhl: ['圆环高亮', 'RingHighlight'], link: ['连杆', 'Link'], clip: ['夹子', 'Clip'], shard: ['碎片', 'Shard'], star: ['星星', 'Star'], flash: ['闪光', 'Flash'], hint: ['提示文字', 'Hint'], hud: ['顶部界面', 'HUD'], lc: ['过关', 'LevelComplete'], confetti: ['彩带', 'Confetti'], puff: ['烟雾', 'Puff'], ripple: ['点击波纹', 'Ripple'], hand: ['手指', 'Hand'] };
 const colOf = a => (String(a || '').split('_').find(t => t in CN) || null);
+// ExtendScript 在非 UTF-8 系统区域（如简体中文 Windows 的 GBK）下读取无 BOM 的 .jsx 会把中文字符串解码错，导致“语法错误/未结束的字符串”。导出时把非 ASCII 字符全部转成 \uXXXX，脚本成为纯 ASCII。
+export const jsxAscii = t => t.replace(/[^\x00-\x7f]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 export function layerName(id, asset, zh) {
   const k = id.split('_')[0], rest = id.slice(k.length + 1), base = (T[k] || [k, k])[zh ? 0 : 1], c = colOf(asset);
   if (k === 'box') return `${base}_${c ? (zh ? CN[c] || c : c) : ''}_${asset.startsWith('tray') ? (zh ? '托盘' : 'tray') : (zh ? '砖' : 'brick')}_${rest}`;
@@ -39,9 +41,12 @@ export function createAERecorder(api) {
     const assets = [], assetFiles = [], pending = [], used = new Map();
     const folders = [{ id: 'root', name: '解环传送带_AE工程' }, { id: 'img', name: '素材', parent: 'root' }, { id: 'scene', name: '场景', parent: 'img' }, { id: 'rings', name: '圆环与夹子', parent: 'img' }, { id: 'balls', name: '球与盒子', parent: 'img' }, { id: 'fx', name: '特效', parent: 'img' }, { id: 'ui', name: '界面', parent: 'img' }, { id: 'aud', name: '音频', parent: 'root' }, { id: 'pre', name: '预合成', parent: 'root' }];
     const toPng = c => new Promise(res => c.toBlob(b => b.arrayBuffer().then(a => res(new Uint8Array(a))), 'image/png'));
+    // AE/Windows 安全文件名：只保留 ASCII 字母数字 . _ -（'#'、空格、中文、冒号等会导致解压或 ExtendScript File() 找不到素材），重名加序号
+    const usedFiles = new Set();
+    function safeFile(key) { let b = String(key).replace(/#/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^[._]+|_+$/g, '').slice(0, 80) || 'asset', f = b, i = 2; while (usedFiles.has(f.toLowerCase())) f = b + '_' + i++; usedFiles.add(f.toLowerCase()); return f; }
     function assetFor(key) {
       if (used.has(key)) return used.get(key); const a = AS[key]; if (!a) return null;
-      const file = 'assets/' + key + '.png', o = { id: key, file, folder: folderOf(key), w: a.c.width, h: a.c.height, name: key + '.png', kx: a.c.width / a.w, ky: a.c.height / a.h, ax: a.ax, ay: a.ay };
+      const file = 'assets/' + safeFile(key) + '.png', o = { id: key, file, folder: folderOf(key), w: a.c.width, h: a.c.height, name: file.slice(7), kx: a.c.width / a.w, ky: a.c.height / a.h, ax: a.ax, ay: a.ay };
       assets.push(o); pending.push(toPng(a.c).then(data => assetFiles.push({ name: file, data }))); used.set(key, o); return o;
     }
     const rnd = v => Array.isArray(v) ? v.map(x => Math.round(x * 100) / 100) : Math.round(v * 100) / 100;
@@ -87,12 +92,13 @@ export function createAERecorder(api) {
     const d = new Date(), p2 = x => String(x).padStart(2, '0'), stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
     comps.push({ id: 'main', name: zh ? '主合成_解环传送带' : 'Main_RingBelt', w: CW, h: CH, duration: D, fps, folder: 'root', bg: [0, 0, 0], layers, markers });
     if (!zh) for (const f of folders) f.name = { 解环传送带_AE工程: 'RingBelt_AE', 素材: 'Assets', 场景: 'Scene', 圆环与夹子: 'RingsClips', 球与盒子: 'BallsBoxes', 特效: 'FX', 界面: 'UI', 音频: 'Audio', 预合成: 'Precomps' }[f.name] || f.name;
+    for (const c of comps) { const seen = new Map(); for (const l of c.layers) { const n0 = l.name; let n = n0, i = seen.get(n0) || 1; while (seen.has(n)) n = `${n0} (${++i})`; seen.set(n0, i); seen.set(n, seen.get(n) || 1); l.name = n; } } // AE 图层名去重（表达式/脚本按名查找时不歧义）
     const keyCount = p => p && p.t ? p.t.length : 0, stats = { comps: comps.length, layers: 0, keys: 0, rings: new Set(segs.filter(g => g.tr.id.startsWith('ring_')).map(g => g.tr.id)).size, balls: new Set(segs.filter(g => g.tr.id.startsWith('ball_')).map(g => g.tr.id)).size, boxes: new Set(segs.filter(g => g.tr.id.startsWith('box_')).map(g => g.tr.id)).size, clips: new Set(segs.filter(g => g.tr.id.startsWith('clip_')).map(g => g.tr.id)).size, sfx: rec.sfx.length, blur: rec.blur.length > 0 };
     for (const c of comps) { stats.layers += c.layers.length; for (const l of c.layers) { if (l.tr) for (const k of ['position', 'scale', 'rotation', 'opacity']) { const kc = keyCount(l.tr[k]); if (kc > 1) stats.keys += kc; } if (l.fx && keyCount(l.fx.blur) > 1) stats.keys += keyCount(l.fx.blur); } }
     const timeline = { meta: { tool: 'ring-belt', version: api.version || '1.0.0', format: 1, created: d.toISOString(), fps, width: CW, height: CH, duration: D, design: [864, 1920], view: V, sampling: bake ? 'bake' : 'reduce', names: zh ? 'zh' : 'en', saveAep: S.aeSaveAep !== false, aepName: `ring-belt_${stamp}.aep`, newProject: true, stats, note: '图层从下到上排列；时间单位秒；位置/锚点单位像素（合成坐标 = 设计坐标减去可视区域左上角）；缩放为百分比' },
       folders, assets: assets.map(({ id, file, folder, w, h, name }) => ({ id, file, folder, w, h, name })), comps, mainComp: 'main' };
     await Promise.all(pending);
-    const enc = new TextEncoder(), files = [{ name: 'build_ae_project.jsx', data: enc.encode(JSX_TEXT) }, { name: 'timeline.json', data: enc.encode(JSON.stringify(timeline)) }, { name: 'README_AE.md', data: enc.encode(README_TEXT) }, ...assetFiles.sort((a, b) => a.name < b.name ? -1 : 1), ...audioFiles];
+    const enc = new TextEncoder(), files = [{ name: 'build_ae_project.jsx', data: enc.encode(jsxAscii(JSX_TEXT)) }, { name: 'timeline.json', data: enc.encode(JSON.stringify(timeline)) }, { name: 'README_AE.md', data: enc.encode(README_TEXT) }, ...assetFiles.sort((a, b) => a.name < b.name ? -1 : 1), ...audioFiles];
     return { blob: makeZip(files), name: `ring-belt_ae_export_${stamp}.zip`, timeline, stats, files: files.length, fileList: files, segs: segs.map(g => ({ id: g.tr.id, asset: g.tr.asset, z: g.tr.z, s: g.s })), blur: rec.blur };
   }
   return { start, stop, sample, exportZip, get rec() { return R; }, set rec(v) { R = v; } };

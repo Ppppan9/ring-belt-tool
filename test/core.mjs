@@ -13,6 +13,7 @@ ok(adv && !['canvasW', 'canvasH', 'beltSpeed', 'startLevel', 'theme'].some(k => 
 const gs = await p.evaluate(() => [...document.querySelectorAll('#panelBody > details > summary')].map(s => s.textContent));
 ok(gs[0].includes('主题') && gs.findIndex(g => g.includes('主题')) < gs.findIndex(g => g.includes('关卡与玩法')), 'theme section above 关卡与玩法');
 // Phase 7：主题切换
-const th = await p.evaluate(() => { const bg0 = document.getElementById('stage').toDataURL().length; __setSettings({ theme: 'realistic' }); __step(2); const keys = __spriteKeys(); const bg1 = document.getElementById('stage').toDataURL().length; const saved = JSON.stringify(localStorage).includes('realistic'); __setSettings({ theme: 'default' }); __step(2); return { bg0, bg1, saved, pref: keys.some(k => k.startsWith('realistic:')) }; });
-ok(th.saved, 'theme persisted'); ok(th.pref, 'realistic sprite keys prefixed'); ok(th.bg0 !== th.bg1, 'theme changes frame');
+const th = await p.evaluate(() => { const bg0 = document.getElementById('stage').toDataURL().length; __setSettings({ theme: 'jade' }); __step(2); const keys = __spriteKeys(); const bg1 = document.getElementById('stage').toDataURL().length; const saved = JSON.stringify(localStorage).includes('jade'); __setSettings({ theme: 'default' }); __step(2); return { bg0, bg1, saved, pref: keys.some(k => k.startsWith('jade:')) }; });
+ok(th.saved, 'theme persisted'); ok(th.pref, 'jade sprite keys prefixed'); ok(th.bg0 !== th.bg1, 'theme changes frame');
+const mg = await p.evaluate(() => [__migrate({ version: 7, settings: { theme: 'realistic' } }).theme, __migrate({ version: 7, settings: { theme: 'jade' } }).theme]); ok(mg[0] === 'default' && mg[1] === 'jade', '旧存档超写实主题回落原版、玉石保留 ' + mg);
 ok(errs.length === 0, 'no errors'); await b.close(); done('test');

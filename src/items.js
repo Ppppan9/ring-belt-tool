@@ -1,25 +1,54 @@
 // 逐帧元素表（frameItems）+ 精灵缓存：屏幕渲染、AE 导出、3D 导出共用同一份数据，保证三者一致。
 // item = { id(稳定), asset(精灵键), x, y, sc, rot(弧度), op, z, add? }，坐标为设计坐标 864×1920。
 import { GEO, TAU, ease, clamp, mix } from './game.js';
-import { theme, spritePrefix } from './themes.js';
+import { theme, spritePrefix, runJob } from './themes.js';
 import { CLIP_NECK_LEN } from './game.js';
 import { clipBlockHalf } from './levels.js';
 import { RR, ballSprite, drawRing, drawBrick, star, drawTopUI, drawClampArt, designLayout } from './render.js';
 export const VIEW = { x0: 0, y0: 0, w: 864, h: 1920 };
 const KS = 2; // 小精灵超采样
-let cache = {}, archive = {};
-export function clearSprites() { Object.assign(archive, cache); cache = {}; }
+// phase16：精灵仓库按“设置签名”(颜色/环粗/盒容量…)分库、键内含主题前缀 → 切换主题不清空，回切即用缓存。
+let stores = {}, storeSig = '', cache = (stores[''] = {}), archive = {};
+export function useSpriteStore(sig) { if (sig === storeSig) return; storeSig = sig; cache = stores[sig] || (stores[sig] = {}); const ks = Object.keys(stores); if (ks.length > 4) for (const k of ks.slice(0, ks.length - 4)) if (k !== sig) delete stores[k]; }
+export function clearSprites() { Object.assign(archive, cache); cache = stores[storeSig] = {}; jobs.clear(); }
 export function resetSpriteArchive() { archive = {}; }
 export function allSprites() { return Object.assign({}, archive, cache); }
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h)); return c; };
-function need(key, w, h, ax, ay, fn, ks = KS) { key = spritePrefix() + key; let s = cache[key]; if (s) return key; const c = mk(w * ks, h * ks), g = c.getContext('2d'); g.scale(ks, ks); g.translate(ax, ay); fn(g); cache[key] = { c, w, h, ax, ay }; return key; }
+// 预算模式（仅交互主循环开启）：缺失精灵按时间片分帧生成；先出 1× 预览（lq:），全部预览就绪后再在空闲片补全高质量版本。
+// 非预算模式（DET/测试步进/AE/3D/H5 导出）保持同步、全质量，结果与 phase15 完全一致。
+export const BUDGET = { on: false, deadline: 0, slow: false, pending: 0, lqPending: 0, made: 0, lqAllDone: true, fbPrefix: null };
+const jobs = new Map();
+export function cancelSpriteJobs() { jobs.clear(); }
+export function beginBudget(ms) { BUDGET.on = ms > 0; BUDGET.deadline = performance.now() + ms; BUDGET.lqAllDone = BUDGET.lqPending === 0; BUDGET.pending = 0; BUDGET.lqPending = 0; }
+export function endBudget() { BUDGET.on = false; }
+function build(key, w, h, ax, ay, fn, ks, ss) {
+  let m = jobs.get(key); if (!m) jobs.set(key, m = new Map());
+  const c = mk(w * ks, h * ks), g = c.getContext('2d'); g.scale(ks, ks); g.translate(ax, ay);
+  const t0 = performance.now(); m.t = (m.t || 0); m.n = (m.n || 0) + 1; let r; try { r = runJob(m, BUDGET.deadline, () => fn(g), ss); } finally { m.t += performance.now() - t0; } if (!r) return null;
+  jobs.delete(key); BUDGET.made++; (BUDGET.log || (BUDGET.log = [])).push([key, Math.round(m.t), m.n]); if (BUDGET.log.length > 200) BUDGET.log.shift(); return { s: { c, w, h, ax, ay }, usedSS: r.usedSS };
+}
+function need(key, w, h, ax, ay, fn, ks = KS) {
+  const P = spritePrefix(); key = P + key; if (cache[key]) return key;
+  if (!BUDGET.on) { const c = mk(w * ks, h * ks), g = c.getContext('2d'); g.scale(ks, ks); g.translate(ax, ay); fn(g); cache[key] = { c, w, h, ax, ay }; return key; }
+  const hqK = P + 'mq:' + key.slice(P.length), lqK = P + 'lq:' + key.slice(P.length);
+  if (cache[hqK]) return hqK;
+  const t = performance.now() < BUDGET.deadline;
+  if (cache[lqK]) { // 预览已有：所有预览就绪后才补全高质量
+    if (!BUDGET.lqAllDone) return lqK; BUDGET.pending++; if (!t) return lqK;
+    const r = build(hqK, w, h, ax, ay, fn, ks, 2); if (!r) return lqK; cache[hqK] = r.s; BUDGET.pending--; return hqK;
+  }
+  BUDGET.pending++; BUDGET.lqPending++; if (!t) return lqK;
+  const r = build(lqK, w, h, ax, ay, fn, ks, 3); if (!r) return lqK; BUDGET.lqPending--;
+  if (!r.usedSS) { cache[hqK] = r.s; BUDGET.pending--; return hqK; } // 无超采样的精灵：预览即最终
+  cache[lqK] = r.s; return lqK;
+}
 const oid = new WeakMap(); let oidN = 0; const idOf = o => { let v = oid.get(o); if (v == null) { v = ++oidN; oid.set(o, v); } return v; };
 const pop = k => { const x = clamp(k, 0, 1); return x < 0.6 ? ease(x / 0.6) * 1.12 : 1.12 - 0.12 * ease((x - 0.6) / 0.4); };
 
 export function frameItems(game, S, ctx = {}) {
   const out = [], L = game.levelIdx, P = (id, asset, x, y, z, o = {}) => out.push({ id, asset, x, y, sc: o.sc ?? 1, rot: o.rot || 0, op: o.op ?? 1, z, add: !!o.add });
   // 背景（木板 + 传送带外壳，静态）
-  if (ctx.bg) { const bk = spritePrefix() + 'background'; cache[bk] || (cache[bk] = { c: ctx.bg, w: 864, h: 1920, ax: 0, ay: 0 }); P('background', bk, 0, 0, 0); }
+  if (ctx.bg) { const bk = spritePrefix() + 'background'; if (!cache[bk] || cache[bk].c !== ctx.bg) cache[bk] = { c: ctx.bg, w: 864, h: 1920, ax: 0, ay: 0 }; P('background', bk, 0, 0, 0); }
   // 传送带凹坑
   const n = game.belt.slots.length, pit = need('pit', 40, 40, 20, 20, g => { if (theme().pit) return theme().pit(g); g.beginPath(); g.ellipse(0, 0, 17, 15.5, 0, 0, TAU); g.fillStyle = '#2a2149'; g.fill(); g.beginPath(); g.ellipse(0, 2.5, 15, 12, 0, 0, TAU); g.fillStyle = '#1d1636'; g.fill(); });
   for (let i = 0; i < n; i++) { const p = game.beltPos(game.slotS(i)); P('pit_' + i, pit, p.x, p.y, 1); }
@@ -47,7 +76,8 @@ export function frameItems(game, S, ctx = {}) {
     key = need(key, half * 2, half * 2, half, half, g => drawRing(g, game, { ...r, c: [0, 0], rot: 0, hl: 0 }, T));
     const z = ZR[r.id]; P(`ring_L${L + 1}_${r.id}`, key, r.c[0], r.c[1], z, { rot: r.rot + (r.shakeT > 0 ? Math.sin(r.shakeT * 70) * 0.05 * r.shakeT / 0.3 : 0) });
     if (theme().ringShadow) { // 分层软投影：世界坐标右下偏移（不随环旋转），贴地接触影 + 大范围柔影
-      const sk = b => need(`rshadow${b}_${key}`, half * 2, half * 2, half, half, g => theme().ringShadow(g, game, r, b));
+      const shK = BUDGET.on && BUDGET.slow ? Math.max(0.5, KS / 2) : KS; // 慢设备：柔影半分辨率（blur 滤镜不可分片，代价 ∝ 像素数）；filter 模糊按像素计 → 半径同比缩放
+      const sk = b => need(`rshadow${b}_${key}`, half * 2, half * 2, half, half, g => theme().ringShadow(g, game, r, b * shK / KS), shK);
       P(`ringsh2_L${L + 1}_${r.id}`, sk(16), r.c[0] + 13, r.c[1] + 21, 3.40 + z * 0.001, { rot: r.rot, op: 0.62 });
       P(`ringsh1_L${L + 1}_${r.id}`, sk(4), r.c[0] + 4, r.c[1] + 6, 3.41 + z * 0.001, { rot: r.rot, op: 0.72 });
     }
@@ -57,7 +87,7 @@ export function frameItems(game, S, ctx = {}) {
     const p = r.p, cl = r.clampLocal, len0 = Math.hypot(cl[0], cl[1]), ux = cl[0] / len0, uy = cl[1] / len0, col = game.color(p.color), dark = mix(col, '#000000', 0.35);
     const cg = clipGeom(r), off = cg.off, len = len0 + off, half = Math.ceil(len + 20); r.clipOff = off; // 颈部：父环外沿 → 夹块内沿，至少 CLIP_NECK_LEN 可见
     const lk = need(`link_L${L + 1}_${r.id}_${p.color}_n${off.toFixed(1)}`, half * 2, half * 2, half, half, g => { if (theme().link) return theme().link(g, p, r, ux, uy, len, col); g.beginPath(); g.moveTo(p.R * ux, p.R * uy); g.lineTo(ux * (len - cg.blockHalf * 0.5), uy * (len - cg.blockHalf * 0.5)); g.lineCap = 'butt'; const nw = 48 * (r.R / 151) * (r.clampScale || 1); g.lineWidth = nw + 4; g.strokeStyle = dark; g.stroke(); g.lineWidth = nw; g.strokeStyle = col; g.stroke(); }); // 颈部：与父环同色，宽度=夹子颈宽，从父环中心线接到夹块
-    P(`link_L${L + 1}_${r.id}`, lk, p.c[0], p.c[1], (ZR[p.id] ?? 5) - 0.0004, { rot: p.rot }); // 颈部压在父环下面
+    P(`link_L${L + 1}_${r.id}`, lk, p.c[0], p.c[1], (ZR[p.id] ?? 5) - 0.0004, { rot: r._frz ? r._frz.prot : p.rot }); // 颈部压在父环下面
     const cw0 = game.clampWorld(r), du = Math.hypot(cw0[0] - p.c[0], cw0[1] - p.c[1]) || 1, cw = [cw0[0] + (cw0[0] - p.c[0]) / du * off, cw0[1] + (cw0[1] - p.c[1]) / du * off], a = Math.atan2(cw0[1] - r.c[1], cw0[0] - r.c[0]), w = T + 14, h = T + 12, cs = Math.ceil(Math.max(w, h, 160 * (r.R / 151) * (r.clampScale || 1)) + 20);
     const ck = need(`clip_${p.color}_${r.R}_${r.clampSprite || ''}_${r.clampRot ?? ''}`, cs, cs, cs / 2, cs / 2, g => { if (drawClampArt(g, game, r)) return; RR(g, -w / 2, -h / 2 + 2, w, h, 5); g.fillStyle = 'rgba(0,0,0,0.3)'; g.fill(); RR(g, -w / 2, -h / 2, w, h, 5); const gr = g.createLinearGradient(-w / 2, 0, w / 2, 0); gr.addColorStop(0, mix(col, '#ffffff', 0.35)); gr.addColorStop(0.5, col); gr.addColorStop(1, dark); g.fillStyle = gr; g.fill(); g.lineWidth = 2; g.strokeStyle = dark; g.stroke(); });
     const zp = ZR[p.id] ?? 5, zc = ZR[r.id] ?? 4, zClip = Math.max(zc + 0.0006, zp - 0.0002); // 夹块：在父环(同色)之下、被夹子环之上
@@ -82,11 +112,13 @@ export function frameItems(game, S, ctx = {}) {
   return out;
 }
 // 把元素表画到画布（屏幕显示、截图、录制都走这里）
+// 生成中的兜底：用上一主题同名精灵（同一仓库），保证画面不空、游戏照常进行
+function fallback(sprites, k) { const fp = BUDGET.fbPrefix; if (fp == null) return null; const P = spritePrefix(); if (!k.startsWith(P)) return null; let r = k.slice(P.length).replace(/^(lq|mq):/, ''); return sprites[fp + r] || sprites[fp + 'mq:' + r] || sprites[fp + 'lq:' + r] || null; }
 export function drawItems(g, items, sprites = cache) {
   const L = designLayout(g.canvas.width, g.canvas.height);
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.fillStyle = '#b98047'; g.fillRect(0, 0, g.canvas.width, g.canvas.height);
   const list = items.map((it, i) => [it, i]).sort((a, b) => a[0].z - b[0].z || a[1] - b[1]);
-  for (const [it] of list) { const s = sprites[it.asset] || archive[it.asset]; if (!s || it.op <= 0.001) continue;
+  for (const [it] of list) { const s = sprites[it.asset] || archive[it.asset] || fallback(sprites, it.asset); if (!s || it.op <= 0.001) continue;
     g.setTransform(L.s, 0, 0, L.s, L.ox, L.oy); g.translate(it.x, it.y); if (it.rot) g.rotate(it.rot); if (it.sc !== 1) g.scale(it.sc, it.sc);
     g.globalAlpha = clamp(it.op, 0, 1); g.globalCompositeOperation = it.add ? 'lighter' : 'source-over'; g.drawImage(s.c, -s.ax, -s.ay, s.w, s.h); }
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
