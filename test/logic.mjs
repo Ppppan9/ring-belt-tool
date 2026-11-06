@@ -61,21 +61,21 @@ async function drag20(id) { const info = await p.evaluate(id => { const g = __ga
     if (i === 0) { await p.mouse.move(cx, cy); await p.mouse.down(); } else await p.mouse.move(cx, cy);
     if (!(await p.evaluate(id => { __step(1); return __game.rings.find(r => r.id === id).alive; }, id))) break; }
   await p.mouse.up(); return p.evaluate(id => __game.rings.find(r => r.id === id).alive, id); }
-await p.evaluate(() => { __auto(false); __game.loadLevel(19); });
+await p.evaluate(() => { __auto(false); __game.loadLevel(5); });
 const l20a = await p.evaluate(() => ({ lv: __game.levelIdx + 1, slots: __game.belt.cap, n: __game.rings.length }));
-ok(l20a.lv === 20 && l20a.slots === 6 && l20a.n === 9, 'L20 可直接载入（9 环 / 传送带容量 6）' + JSON.stringify(l20a));
+ok(l20a.lv === 6 && l20a.slots === 23 && l20a.n === 9, 'L20 可直接载入（9 环 / 传送带容量 = 孔数 23，phase41 用户要求不限 6）' + JSON.stringify(l20a));
 const locked20 = await p.evaluate(() => { const g = __game; return ['a', 'w', 'e', 's', 'ss'].every(id => g.isLocked(g.rings.find(r => r.id === id))) && ['ww', 'ee', 'bl', 'br'].every(id => !g.isLocked(g.rings.find(r => r.id === id))); });
 ok(locked20, 'L20 开局只有 4 个叶子环可转，其余被多夹扣锁死');
 const alive20 = []; for (const id of L20) { alive20.push(await drag20(id)); await settle20(); }
 await p.evaluate(() => { for (let i = 0; i < 300 && __game.state !== 'lc'; i++) __step(1); });
 const e2e20 = await p.evaluate(() => ({ st: __game.state, boxed: __game.balls.filter(b => b.state === 'boxed').length }));
 ok(alive20.every(a => !a) && e2e20.st === 'lc' && e2e20.boxed === 48, 'L20 e2e：鼠标拖动按 br→bl→ee→ww→w→ss→s→e 通关 ' + JSON.stringify({ alive20, e2e20 }));
-await p.evaluate(() => { __auto(false); __game.loadLevel(19); });
+await p.evaluate(() => { __auto(false); __game.loadLevel(5); });
 for (const id of ['bl', 'br', 'ee', 'ww', 'w', 'ss', 's', 'e']) { await drag20(id); await settle20(); }
 await p.evaluate(() => __step(600));
 const bad20 = await p.evaluate(() => ({ st: __game.state, belt: __game.belt.slots.filter(Boolean).length }));
-ok(bad20.st === 'play' && bad20.belt === 6, 'L20 错序（bl 先于 br）→ 传送带塞满卡死 ' + JSON.stringify(bad20));
-const au20 = await p.evaluate(() => { __auto(false); __game.loadLevel(19); __auto(true); let t = 0; while (__game.state !== 'lc' && t < 3600) { __step(1); t++; } __auto(false); return { st: __game.state, sec: +(t / 60).toFixed(1) }; });
+ok(bad20.st === 'lc' || bad20.belt > 6, 'L20 错序（bl 先于 br）→ 容量=孔数，不再在 6 球处卡死 ' + JSON.stringify(bad20));
+const au20 = await p.evaluate(() => { __auto(false); __game.loadLevel(5); __auto(true); let t = 0; while (__game.state !== 'lc' && t < 3600) { __step(1); t++; } __auto(false); return { st: __game.state, sec: +(t / 60).toFixed(1) }; });
 ok(au20.st === 'lc', 'L20 自动通关脚本可通关 ' + JSON.stringify(au20));
 { const { LEVELS, SPECIAL_LEVELS, gapSafeViolations, GAP_SAFE_DEG } = await import('../src/levels.js');
   const bad = [...LEVELS.map((l, i) => [i + 1, l]), ...Object.entries(SPECIAL_LEVELS)].flatMap(([n, l]) => gapSafeViolations(l).map(v => ({ lv: n, ...v })));

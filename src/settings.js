@@ -1,13 +1,13 @@
 import { DEFAULT_HAND } from './default_hand.js';
 import { h5DeviceSelectOptions } from './h5/index.js';
 import { SFX_NAMES } from './audio.js';
-import { THEME_OPTIONS } from './themes.js';
+import { THEME_OPTIONS, DEFAULT_EXPORT_THEMES } from './themes.js';
 // 默认手指：统一使用共享手图（标准 2026-10-18），锚点/旋转/翻转按共享默认
 export const DEFAULT_HAND_SIZE = 0.42, DEFAULT_HAND_ANCHOR_X = 0.2204, DEFAULT_HAND_ANCHOR_Y = 0.0367, DEFAULT_HAND_ROTATION = 0, DEFAULT_HAND_FLIP = false;
 export const TOOL_ID = 'ring-belt';
 export const TOOL_ZH = '解环传送带';
 export const TOOL_EN = 'RingBelt';
-export const SETTINGS_VERSION = 8;
+export const SETTINGS_VERSION = 9;
 const LS_KEY = 'ring-belt-settings';
 // [key, label, type, default, extra]   type: num/range/bool/select/text/file/button/area/color
 // extra.adv = true → 不常用参数，面板上统一收进底部折叠的「高级设置」（按原分组小标题列出）；
@@ -15,7 +15,8 @@ const LS_KEY = 'ring-belt-settings';
 export const ADV_GROUP = '高级设置';
 export const SCHEMA = [
   ['主题', [
-    ['theme', '美术主题（实时切换，录制/AE/3D/H5 导出均使用当前主题）', 'select', 'default', { options: THEME_OPTIONS }],
+    ['theme', '美术主题（实时预览；导出请用下方「导出主题」）', 'select', 'default', { options: THEME_OPTIONS }],
+    ['exportThemes', '导出主题（可多选，AE/3D/H5 共用）', 'text', DEFAULT_EXPORT_THEMES, { options: THEME_OPTIONS, multiTheme: true }],
     ['beltFaceBright', '传送带带面·明度（玉石主题）', 'range', 1, { min: 0.3, max: 2, step: 0.01 }],
     ['beltFaceSat', '传送带带面·饱和度', 'range', 1, { min: 0, max: 2.5, step: 0.01 }],
     ['beltFaceHue', '传送带带面·色相(°)', 'range', 0, { min: -180, max: 180, step: 1 }],
@@ -26,7 +27,7 @@ export const SCHEMA = [
   ['关卡与玩法', [
     ['canvasW', '画布宽(px)', 'num', 864, { min: 360, max: 2160, step: 1 }],
     ['canvasH', '画布高(px)', 'num', 1920, { min: 640, max: 3840, step: 1 }],
-    ['startLevel', '起始关卡（20=最难关）', 'num', 1, { min: 1, max: 20, step: 1 }],
+    ['startLevel', '起始关卡（6=最难关）', 'num', 1, { min: 1, max: 6, step: 1 }],
     ['loopLevels', '最后一关后回到第 1 关', 'bool', true],
     ['beltSpeed', '传送带速度(px/s)', 'num', 900, { min: 40, max: 1200, step: 10 }],
     ['beltSlots', '传送带格子数', 'num', 23, { min: 12, max: 40, step: 1 , adv: true }],
@@ -43,6 +44,11 @@ export const SCHEMA = [
     ['colorMap', '颜色映射 JSON（视频色→美术色）', 'text', '{"yellow":"orange","pink":"red","sky":"cyan","lilac":"purple","grey":"gray"}', { adv: true }],
     ['useArtGap', '开口环缺口角度(°，按美术图，0=按关卡数据)', 'num', 58, { min: 0, max: 120, step: 1 , adv: true }],
     ['unlockMargin', '解锁余量(°，缺口须完全越过卡扣再脱落)', 'num', 3, { min: 0, max: 30, step: 0.5 , adv: true }],
+    ['unlockClear', '脱开判定：夹扣占位系数（1=缺口完全居中才脱；越小越早脱，避免夹扣悬空）', 'num', 1, { min: 0.2, max: 1, step: 0.05 , adv: true }],
+    ['unlockSnap', '夹扣进入缺口后自动吸附脱开（防止夹扣悬空）', 'bool', true, { adv: true }],
+    ['clipFollowParent', '子环脱落后残留夹扣粘在父环上随父环转动（关=固定在场景）', 'bool', true, { adv: true }],
+    ['autoUnlockFirst', '自动通关优先解环（不先倒球、不等球落定，直接转缺口脱扣）', 'bool', true],
+    ['autoPatient', '自动通关耐心版（解一个环后，等传送带小球消除完再解下一个）', 'bool', false],
     ['lockMultiJoint', '同时被两个夹扣约束的环不能转动', 'bool', true, { adv: true }],
     ['hingeRelease', '铰接环转到解锁即脱落（全部脱开后中心环碎裂）', 'bool', true, { adv: true }],
     ['colRed', '红色', 'color', '#f23a4e'], ['colBlue', '蓝色', 'color', '#4a7cf0'], ['colGreen', '绿色', 'color', '#22c457'],
@@ -134,6 +140,7 @@ export function migrate(raw) {
   for (let ver = v; ver < SETTINGS_VERSION; ver++) { const od = OLD_DEFAULTS[ver] || {}; for (const k in od) if (k in src && src[k] === od[k]) src[k] = DEFAULTS[k]; }
   for (const [k, lo, hi] of [['beltFaceBright', 0.3, 2], ['beltFaceSat', 0, 2.5], ['beltFaceHue', -180, 180], ['beltFaceContrast', 0.3, 2]]) if (k in src) { const n = +src[k]; src[k] = isFinite(n) ? Math.min(hi, Math.max(lo, n)) : DEFAULTS[k]; } // v7：带面调色
   if (src.theme === 'original-ui') src.theme = 'default'; if (src.theme === 'realistic') src.theme = 'default'; // v8：超写实主题已删除，回落原版；v6：原创UI 主题已被「玉石」替换，旧存档回落到原版
+  if (!src.exportThemes) src.exportThemes = DEFAULT_EXPORT_THEMES; // v9：导出主题多选
   const out = {};
   for (const k in DEFAULTS) out[k] = (k in src) ? src[k] : DEFAULTS[k];
   return out;

@@ -5,15 +5,61 @@
 //          brick(g,game,box,isTray,S) / pit(g) / topUI(g,game,S) / mat3d(kind,colorName)->{roughness,metalness}
 import { GEO, TAU } from './game.js';
 import { RR, boardPath } from './render.js';
+import { TUBE_HALF_MAX } from './levels.js';
+import { WR_W as WR_W0, WR_H as WR_H0, WR_D, WR_P } from './woodRingTex.js';
 import jadeTexUrl from '../assets/themes/jade/jade_l.jpg';
 import leavesUrl from '../assets/themes/jade/leaves.webp';
 import sceneUrl from '../assets/themes/jade/scene.webp';
 import woodSceneUrl from '../assets/themes/wood/scene.webp'; // phase20：木质参考图去棋子场景
+import woodClipBigUrl from '../assets/themes/wood/clip_big.webp'; // phase32：参考图金扣烘焙
+import woodClipSmallUrl from '../assets/themes/wood/clip_small.webp';
+import woodBeltUrl from '../assets/themes/wood/belt.webp';
+import woodPlaqueUrl from '../assets/themes/wood/plaque.webp'; // phase26：参考图烘焙的牌匾/暂停钮
+import woodPauseUrl from '../assets/themes/wood/pause.webp';
+// phase33：缺色盒子 = 同类绿色母版经 hue 混合换色（省体积，H5 渠道 2MB 限制）
+const CB_TGT = { red: '#fc4653', blue: '#498dfb', green: '#2ade78', yellow: '#ffcd28', purple: '#a559fa', orange: '#fe933c', cyan: '#35cbfd' }, CB_CACHE = {};
+function candyBoxImg(isTray, col, pf = 'cb') { const key = pf + '_' + (isTray ? 't_' : 'q_') + col; if (TEX[key]) return TEX[key]; if (CB_CACHE[key]) return CB_CACHE[key];
+  const M = TEX[pf + '_' + (isTray ? 't_' : 'q_') + 'green']; if (!M || !M.complete || !M.naturalWidth || !CB_TGT[col] || typeof document === 'undefined') return null;
+  const c = document.createElement('canvas'); c.width = M.naturalWidth; c.height = M.naturalHeight; const x = c.getContext('2d'); x.drawImage(M, 0, 0); x.globalCompositeOperation = 'hue'; x.fillStyle = CB_TGT[col]; x.fillRect(0, 0, c.width, c.height);
+  x.globalCompositeOperation = 'saturation'; x.fillRect(0, 0, c.width, c.height); x.globalCompositeOperation = 'destination-in'; x.drawImage(M, 0, 0); c.complete = true; c.naturalWidth = c.width; c.naturalHeight = c.height; return (CB_CACHE[key] = c); }
+// phase33：彩块参考图烘焙盒子/托盘（tools/bake_candy_box.py）
+import cb_q_red from '../assets/themes/candy/box/q_red.webp';
+import cb_q_blue from '../assets/themes/candy/box/q_blue.webp';
+import cb_q_green from '../assets/themes/candy/box/q_green.webp';
+import cb_q_purple from '../assets/themes/candy/box/q_purple.webp';
+import cb_q_cyan from '../assets/themes/candy/box/q_cyan.webp';
+import cb_t_green from '../assets/themes/candy/box/t_green.webp';
+import cb_t_purple from '../assets/themes/candy/box/t_purple.webp';
+import cb_t_orange from '../assets/themes/candy/box/t_orange.webp';
+// phase34：玉石参考图烘焙（用户图 05d99fd6…）
+import jb_q_red from '../assets/themes/jade/box/q_red.webp';
+import jb_q_blue from '../assets/themes/jade/box/q_blue.webp';
+import jb_q_green from '../assets/themes/jade/box/q_green.webp';
+import jb_q_purple from '../assets/themes/jade/box/q_purple.webp';
+import jb_q_orange from '../assets/themes/jade/box/q_orange.webp';
+import jb_q_cyan from '../assets/themes/jade/box/q_cyan.webp';
+import jb_t_green from '../assets/themes/jade/box/t_green.webp';
+import jb_t_orange from '../assets/themes/jade/box/t_orange.webp';
+import jb_t_purple from '../assets/themes/jade/box/t_purple.webp';
+import jadeClipBigUrl from '../assets/themes/jade/clip_big.webp';
+import jadeClipSmallUrl from '../assets/themes/jade/clip_small.webp';
+import jadeBeltUrl from '../assets/themes/jade/belt.webp';
+import jadePlaqueUrl from '../assets/themes/jade/plaque.webp';
+import jadePauseUrl from '../assets/themes/jade/pause.webp';
+import candyBallShadeUrl from '../assets/themes/candy/ball_shade.webp';
+import candyBallSpecUrl from '../assets/themes/candy/ball_spec.webp';
+import candyBeltUrl from '../assets/themes/candy/belt.webp';
+import candyPlaqueUrl from '../assets/themes/candy/plaque.webp'; // phase27：彩块参考图烘焙牌匾/暂停钮
+import candyPauseUrl from '../assets/themes/candy/pause.webp';
 import candySceneUrl from '../assets/themes/candy/scene.webp'; // phase21：彩块参考图去棋子场景 // phase19：参考图风格整幅场景（竹/荷/湖 + 雕玉大盘框 + 下方玉面板），无棋子
 
-const img = u => { if (typeof Image === 'undefined') return null; const im = new Image(); im.src = u; return im; };
-const TEX = { jade: img(jadeTexUrl), leaves: img(leavesUrl), scene: img(sceneUrl), woodScene: img(woodSceneUrl), candyScene: img(candySceneUrl) };
-export const themeAssetsReady = () => Promise.all(Object.values(TEX).filter(Boolean).map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; })));
+const img = u => { if (typeof Image === 'undefined') return null; const im = new Image(); im.onload = () => { if (typeof window !== 'undefined') window.dispatchEvent(new Event('rb-tex')); }; im.src = u; return im; }; // 修复：贴图晚到时通知重建背景
+const TEX = { jade: img(jadeTexUrl), leaves: img(leavesUrl), scene: img(sceneUrl), woodScene: img(woodSceneUrl), woodBelt: img(woodBeltUrl), woodClipBig: img(woodClipBigUrl), woodClipSmall: img(woodClipSmallUrl), woodPlaque: img(woodPlaqueUrl), woodPause: img(woodPauseUrl), candyScene: img(candySceneUrl), candyBelt: img(candyBeltUrl), candyBallShade: img(candyBallShadeUrl), candyBallSpec: img(candyBallSpecUrl), jb_q_red: img(jb_q_red), jb_q_blue: img(jb_q_blue), jb_q_green: img(jb_q_green), jb_q_purple: img(jb_q_purple), jb_q_orange: img(jb_q_orange), jb_q_cyan: img(jb_q_cyan), jb_t_green: img(jb_t_green), jb_t_orange: img(jb_t_orange), jb_t_purple: img(jb_t_purple), jadeBelt: img(jadeBeltUrl), jadeClipBig: img(jadeClipBigUrl), jadeClipSmall: img(jadeClipSmallUrl), jadePlaque: img(jadePlaqueUrl), jadePause: img(jadePauseUrl), cb_q_red: img(cb_q_red), cb_q_blue: img(cb_q_blue), cb_q_green: img(cb_q_green), cb_q_purple: img(cb_q_purple), cb_q_cyan: img(cb_q_cyan), cb_t_green: img(cb_t_green), cb_t_purple: img(cb_t_purple), cb_t_orange: img(cb_t_orange), candyPlaque: img(candyPlaqueUrl), candyPause: img(candyPauseUrl) };
+// phase35：Safari/慢设备——complete 但未解码时 naturalWidth 可能为 0；逐图 decode()（失败/超时 8s 放行，晚到由 rb-tex 重建）
+// phase34：H5 试玩只打包当前主题贴图（2MB 渠道限制），其它主题专属贴图在导出时剔除
+const THEME_TEX = { wood: /^wood/, candy: /^(candy|cb_)/, jade: /^(jb_|jade(Belt|Plaque|Pause|Clip))/ };
+export const otherThemeUrls = cur => Object.entries(TEX).filter(([k, im]) => im && Object.entries(THEME_TEX).some(([t, re]) => t !== cur && re.test(k))).map(([, im]) => im.src).filter(u => u && u.startsWith('data:'));
+export const themeAssetsReady = () => Promise.race([Promise.all(Object.values(TEX).filter(Boolean).map(im => (im.complete && im.naturalWidth ? Promise.resolve() : new Promise(r => { im.addEventListener('load', r, { once: true }); im.addEventListener('error', r, { once: true }); })).then(() => im.decode ? im.decode().catch(() => 0) : 0))), new Promise(r => setTimeout(r, 8000))]);
 
 // ---------- 通用：基于 SDF 的逐像素“实体”渲染（倒角高度场 → 法线 → 光照） ----------
 const hex = h => { h = h.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); return [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16) / 255); };
@@ -353,6 +399,7 @@ const jadeTheme = {
     const c = mk(W, H), g = c.getContext('2d');
     const ck = bgCheckpoints(c, g, W, H);
     const SI = TEX[this.sceneKey || 'scene'], SC = SI && SI.complete && SI.naturalWidth ? SI : null;
+    if (this.sceneKey && !SC) c.__miss = true; // 场景图未加载：标记，勿缓存（否则木质/彩块会永久落到玉石程序背景）
     if (SC && ck.run('scene')) { g.drawImage(SC, 0, 0, W, H); ck.end(); }
     if (!SC && ck.run('sky')) {
     let gr = g.createLinearGradient(0, 0, W * 0.4, H); gr.addColorStop(0, '#9fd6c7'); gr.addColorStop(0.5, '#86c7b6'); gr.addColorStop(1, '#5fa898'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
@@ -387,11 +434,13 @@ const jadeTheme = {
     ck.end(); }
     // 传送带：金框 + 墨翠带面 + 金导轨
     const B = GEO.belt, bw = B.x1 - B.x0, bh = B.y1 - B.y0, cx = (B.x0 + B.x1) / 2, cy = (B.y0 + B.y1) / 2, P2 = 40;
+    const BLn = BELT.b === 1 && BELT.s === 1 && !BELT.h && BELT.c === 1, BLf = typeof g.filter === 'string', BTI = this.beltImg && TEX[this.beltImg], BTok = !!(BTI && BTI.complete && BTI.naturalWidth) && !BELT.img && (BLn || BLf); // 带面调色：烘焙带体用 ctx.filter 同步；上传带面图或不支持 filter 时回退程序带面 // phase32：参考图烘焙带体（金框+紫面+端饰）
+    if (BTok) { const bb = this.beltBox || [60, 16, 1836, 344], sx = bw / bb[2], sy = bh / bb[3]; if (!BLn) { g.save(); g.filter = `hue-rotate(${BELT.h}deg) brightness(${BELT.b}) saturate(${BELT.s}) contrast(${BELT.c})`; } g.drawImage(BTI, B.x0 - bb[0] * sx, B.y0 - bb[1] * sy, (bb[4] || BTI.naturalWidth) * sx, (bb[5] || BTI.naturalHeight) * sy); if (!BLn) g.restore(); BELT_RECT = { x: cx - bw / 2 + 8, y: cy - bh / 2 + 8, w: bw - 16, h: bh - 16 }; }
     const frame = solid(bw + P2 * 2, bh + P2 * 2, bw / 2 + P2, bh / 2 + P2, 1, (x, y) => sdBox(x, y, bw / 2, bh / 2, bh / 2), 12, this.beltFrame ? { custom: this.beltFrame, light: UP, shadow: { dx: 0, dy: 12, blur: 26, a: 0.4 } } : { color: GOLD, light: UP, clean: { broad: 0.4, tight: 0.6, tintSpec: 0.5 }, shadow: { dx: 0, dy: 12, blur: 26, a: 0.4 } });
-    g.drawImage(frame, cx - bw / 2 - P2, cy - bh / 2 - P2);
-    if (this.beltKnobs) { const kb = solid(40, 60, 20, 30, 1, (x, y) => sdBox(x, y, 7, 18, 6), 7, { color: this.beltKnobs, light: UP, clean: { broad: 0.4, tight: 0.7, tintSpec: 0.5 }, shadow: { dx: 0, dy: 3, blur: 5, a: 0.4 } }); for (const sx of [-1, 1]) g.drawImage(kb, cx + sx * (bw / 2 + 2) - 20, cy - 30); } // 参考图：传送带两端金色端头
+    if (!BTok) g.drawImage(frame, cx - bw / 2 - P2, cy - bh / 2 - P2);
+    if (this.beltKnobs && !BTok) { const kb = solid(40, 60, 20, 30, 1, (x, y) => sdBox(x, y, 7, 18, 6), 7, { color: this.beltKnobs, light: UP, clean: { broad: 0.4, tight: 0.7, tintSpec: 0.5 }, shadow: { dx: 0, dy: 3, blur: 5, a: 0.4 } }); for (const sx of [-1, 1]) g.drawImage(kb, cx + sx * (bw / 2 + 2) - 20, cy - 30); } // 参考图：传送带两端金色端头
     const J = this.beltJ || { deep: [0.20, 0.09, 0.33], base: [0.52, 0.40, 0.70] }; // phase19：材质参考图 → 紫罗兰玉带面
-    const bk = 'belt' + this.id, belt = CACHE[bk] || (CACHE[bk] = solid(bw - 16, bh - 16, bw / 2 - 8, bh / 2 - 8, 1, (x, y) => sdBox(x, y, bw / 2 - 11, bh / 2 - 11, bh / 2 - 11), 8, { custom: (x, y, nx, ny, nz) => { const f = fbm(x / 60 + 3, y / 60, 4), v = Math.exp(-Math.pow((fbm(x / 90, y / 90 + 9, 4) - 0.5) / 0.04, 2)); const m = sm(0.35, 0.75, f); return [0, 1, 2].map(j => cl((J.base[j] + (J.deep[j] - J.base[j]) * m) * (0.75 + 0.25 * nz) + 0.12 * v + 0.1 * Math.pow(nz, 8))).concat(1); }, concave: true }));
+    const bk = 'belt' + this.id, belt = CACHE[bk] || (CACHE[bk] = solid(bw - 16, bh - 16, bw / 2 - 8, bh / 2 - 8, 1, (x, y) => sdBox(x, y, bw / 2 - 11, bh / 2 - 11, bh / 2 - 11), 8, { custom: (x, y, nx, ny, nz) => { const f = this.beltFlat ? 0.55 : this.beltStreak ? fbm(x / 150 + 3, y / 7, 4) * 0.45 + 0.35 * fbm(x / 28 + 1, y / 22, 4) + 0.2 * fbm(x / 40, y / 3, 2) : fbm(x / 60 + 3, y / 60, 4), v = this.beltFlat ? 0 : Math.exp(-Math.pow((fbm(x / 90, y / 90 + 9, 4) - 0.5) / 0.04, 2)); const m = sm(0.35, 0.75, f); return [0, 1, 2].map(j => cl((J.base[j] + (J.deep[j] - J.base[j]) * m) * (0.75 + 0.25 * nz) + 0.12 * v + 0.1 * Math.pow(nz, 8))).concat(1); }, concave: true }));
     // 上传图：cover 铺满带面圆角区域 + 带面明暗（内阴影/顶部反光）保持立体感
     let face = belt;
     if (BELT.img && beltIm && beltIm.complete && beltIm.naturalWidth) {
@@ -400,13 +449,13 @@ const jadeTheme = {
       let sg = fg.createLinearGradient(0, 3, 0, fh + 3); sg.addColorStop(0, 'rgba(0,0,0,0.35)'); sg.addColorStop(0.18, 'rgba(0,0,0,0)'); sg.addColorStop(0.8, 'rgba(255,255,255,0)'); sg.addColorStop(1, 'rgba(255,255,255,0.18)'); fg.fillStyle = sg; fg.fillRect(0, 0, face.width, face.height); fg.restore();
     } else { face = mk(belt.width, belt.height); face.getContext('2d').drawImage(belt, 0, 0); }
     adjustPixels(face);
-    g.drawImage(face, cx - bw / 2 + 8, cy - bh / 2 + 8); BELT_RECT = { x: cx - bw / 2 + 8, y: cy - bh / 2 + 8, w: bw - 16, h: bh - 16 };
-    const rail = solid(650, 40, 325, 20, 1, (x, y) => sdBox(x, y, 313, 7.5, 7.5), 7.5, { color: this.railCol || GOLD, light: UP, clean: { broad: 0.4, tight: 0.7, tintSpec: 0.5 }, shadow: { dx: 0, dy: 4, blur: 7, a: 0.4 } });
+    if (!BTok) g.drawImage(face, cx - bw / 2 + 8, cy - bh / 2 + 8); BELT_RECT = { x: cx - bw / 2 + 8, y: cy - bh / 2 + 8, w: bw - 16, h: bh - 16 };
+    const rail = solid(650, 40, 325, 20, 1, (x, y) => sdBox(x, y, 313, this.railHalf || 7.5, this.railHalf || 7.5), this.railHalf || 7.5, { color: this.railCol || GOLD, light: UP, clean: { broad: 0.4, tight: 0.7, tintSpec: 0.5 }, shadow: { dx: 0, dy: 4, blur: 7, a: 0.4 } });
     g.drawImage(rail, 432 - 325, 1253.5 - 20);
-    if (this.railBeads) { const bR = this.railBeadR || 8.5, bd = solid(30, 30, 15, 15, 1, (x, y) => Math.hypot(x, y) - bR, bR, { color: this.railBeads, light: UP, clean: { broad: 0.4, tight: 0.7, tintSpec: 0.5 }, shadow: { dx: 0, dy: 2, blur: 3, a: 0.4 } }); const bn = this.railBeadN ?? 3; for (let i = -bn; i <= bn; i++) g.drawImage(bd, 432 + i * (bR * 2.2) - 15, 1253.5 - 15); } // 参考图：传送带中轴的一串珠子
+    if (this.railBeads) { const bR = this.railBeadR || 8.5, bd = solid(30, 30, 15, 15, 1, (x, y) => Math.hypot(x, y) - bR, bR, { color: this.railBeads, light: UP, clean: { broad: 0.4, tight: 0.7, tintSpec: 0.5 }, shadow: { dx: 0, dy: 2, blur: 3, a: 0.4 } }); const bn = this.railBeadN ?? 3, bc = this.railBeadCount || bn * 2 + 1; const stp = bR * (this.railStep || (this.railSpacer ? 3.0 : 2.2)); if (this.railSpacer) { const sp = solid(20, 20, 10, 10, 1, (x, y) => Math.hypot(x, y) - 5, 5, { color: '#2a2018', light: UP, clean: { broad: 0.3, tight: 0.6, tintSpec: 0.3 } }); for (let k = 0; k < bc - 1; k++) g.drawImage(sp, 432 + (k + 0.5 - (bc - 1) / 2) * stp - 10, 1253.5 - 10); } for (let k = 0; k < bc; k++) g.drawImage(bd, 432 + (k - (bc - 1) / 2) * stp - 15, 1253.5 - 15); } // 参考图：传送带中轴的一串珠子
     return c;
   },
-  tubeHalf(R) { return this.tw ? Math.min(this.tw(R), tubeW(R)) : tubeW(R); }, // 视觉管宽不得超过布局预留 TUBE_HALF_MAX(=0.205R)，否则吃掉夹扣颈部
+  tubeHalf(R) { return this.tw ? Math.min(this.tw(R), TUBE_HALF_MAX(R)) : tubeW(R); }, // 视觉管宽不得超过布局预留 TUBE_HALF_MAX(=0.205R)，否则吃掉夹扣颈部
   ring(g, game, r) {
     const R = r.R, hw = this.tubeHalf(R) * 0.93, pad = 6, S = Math.ceil(R + hw * 1.15 + pad), J = jadeOf(game.color(r.color)), n = bambooN(R, hw);
     const sdf = this.ringShade ? ringSDF(r, hw) : bambooSDF(r, hw); // 木质/彩块：光滑粗管（无竹节）
@@ -424,7 +473,11 @@ const jadeTheme = {
     if (r.closed) g.arc(0, 0, R, 0, TAU); else g.arc(0, 0, R, r.gapC + r.gapW / 2, r.gapC - r.gapW / 2 + TAU);
     g.stroke(); g.filter = 'none';
   },
-  ball(col, r) { r *= this.ballK || 1; // 玉珠：透光体 + 色根/絮 + 左上高光 + 右下透射亮边 + 烘焙投影
+  ball(col, r) { r *= this.ballK || 1; const BS = this.ballImg && TEX[this.ballImg + 'Shade'], BP = this.ballImg && TEX[this.ballImg + 'Spec']; if (BS && BS.complete && BS.naturalWidth && BP && BP.complete && BP.naturalWidth) { // phase38：参考图烘焙糖果球（明暗乘色 + 白色高光）
+      const k = 3, pad = r * 0.8, s = Math.ceil(r * 2 + pad * 2), W = Math.ceil(s * k), c = mk(W, W), g = c.getContext('2d'), m = W / 2, R = r * k, t = mk(W, W), tg = t.getContext('2d');
+      g.save(); g.filter = `blur(${R * 0.18}px)`; g.fillStyle = 'rgba(70,35,10,0.38)'; g.beginPath(); g.ellipse(m + R * 0.1, m + R * 0.32, R * 0.92, R * 0.8, 0, 0, TAU); g.fill(); g.restore();
+      const hc = hex(col), near = Object.values(CB_TGT).map(h => [h, hex(h)]).sort((A, B) => A[1].reduce((q, v, j) => q + (v - hc[j]) ** 2, 0) - B[1].reduce((q, v, j) => q + (v - hc[j]) ** 2, 0))[0]; tg.fillStyle = near && near[1].reduce((q, v, j) => q + (v - hc[j]) ** 2, 0) < 0.12 ? near[0] : col; /* 参考图糖果色 */ tg.beginPath(); tg.arc(m, m, R, 0, TAU); tg.fill(); tg.globalCompositeOperation = 'multiply'; tg.drawImage(BS, m - R, m - R, 2 * R, 2 * R); tg.globalCompositeOperation = 'destination-in'; tg.drawImage(BS, m - R, m - R, 2 * R, 2 * R); tg.globalCompositeOperation = 'source-over'; tg.drawImage(BP, m - R, m - R, 2 * R, 2 * R);
+      g.drawImage(t, 0, 0); c.dw = s; return c; } // 玉珠：透光体 + 色根/絮 + 左上高光 + 右下透射亮边 + 烘焙投影
     const J = jadeOf(col) || JADE.white, k = 3, pad = r * 0.8, s = Math.ceil(r * 2 + pad * 2), W = Math.ceil(s * k), c = mk(W, W), g = c.getContext('2d'), id = g.createImageData(W, W), d = id.data;
     const sh = this.ballShade ? this.ballShade(col) : jadeShade(J, (strSeed(col) % 23) + r, 0, r, 1, true);
     for (let py = 0; py < W; py++) for (let px = 0; px < W; px++) {
@@ -438,9 +491,10 @@ const jadeTheme = {
     }
     g.putImageData(id, 0, 0); c.dw = s; return c;
   },
-  clip(g, game, r) { // 圆柱金属箍：包住子环管（轴 = 管切向 = 本地 x），两端唇边 + 合缝 + 小螺钉；锚环为金竹节 → 金箍，其余银箍
+  clip(g, game, r) { const CI = this.clipImg && TEX[this.clipImg]; if (CI && CI.complete && CI.naturalWidth) { const hw = this.tubeHalf(r.R) * 0.93, ac = hw * 2 * 1.15, al = ac * CI.naturalHeight / CI.naturalWidth; g.save(); g.rotate(Math.PI / 2); g.drawImage(CI, -ac / 2, -al / 2, ac, al); g.restore(); return true; } // phase32：参考图烘焙金扣
+    // 圆柱金属箍：包住子环管（轴 = 管切向 = 本地 x），两端唇边 + 合缝 + 小螺钉；锚环为金竹节 → 金箍，其余银箍
     const k = r.R / 151 * (r.clampScale || 1), col = this.clipCol ? this.clipCol(game.color(r.p.color)) : jadeOf(game.color(r.p.color)) ? SILVER : GOLD, th = this.tubeHalf(r.R) * 0.93, ck = this.clipK || 1, cw = Math.max(16 * k, th * 0.62) * ck, ch = Math.max(28 * k, th * 1.3) * (this.clipKh || ck), lip = 3.2 * k, S = Math.ceil(Math.max(cw, ch) + 18);
-    const sdf = (x, y) => { const inLip = Math.abs(x) > cw - lip * 1.6; return sdBox(x, y, cw, ch + (inLip ? 1.6 * k : 0), Math.min(cw * 0.6, 9 * k)); };
+    const sdf = (x, y) => { const inLip = Math.abs(x) > cw - lip * 1.6; return sdBox(x, y, cw, ch + (inLip ? (this.clipRolled ? 4.5 : 1.6) * k : 0), Math.min(cw * 0.6, 9 * k)); };
     const ms = this.clipMetal === false ? paintShade(col, { gloss: 0.55, soft: true }) : metalShade(col, 0, ch, 0, 'collar');
     const c = solid(S * 2, S * 2, S, S, 3, sdf, 3 * k, { ss: 2, light: UP, shadow: { dx: 0, dy: 0, blur: 8, a: 0.4 }, custom: (x, y, nx, ny, nz) => {
       const yy = cl(y / (ch + 1.6 * k), -0.999, 0.999), cz = Math.sqrt(1 - yy * yy); let o = ms(x, y, nx * 0.5, yy, cz);
@@ -448,32 +502,45 @@ const jadeTheme = {
       const seam = Math.exp(-Math.pow((y - ch * 0.62) / (0.6 * k), 2)) * (Math.abs(x) < cw - lip * 1.6 ? 1 : 0); // 合缝
       const sd = Math.hypot(x - cw * 0.35, y - ch * 0.62) - 2.4 * k, screw = sd < 0 ? 1 : 0; // 螺钉
       const split = this.clipSplit ? Math.exp(-Math.pow(y / (1.1 * k), 2)) : 0; // 参考图：两节并排金套筒
-      const f = 1 - 0.55 * groove - 0.5 * seam - 0.75 * split; o = o.map(v => v * f);
+      let f = 1 - 0.55 * groove - 0.5 * seam - 0.75 * split; if (this.clipRolled) { const ax = Math.abs(x) / cw; f = (1 - 0.35 * groove) * (0.86 + 0.2 * ax * ax); const G = [0.80, 0.64, 0.30], hl = 0.55 * Math.exp(-Math.pow((yy + 0.35) / 0.16, 2)) + 0.25 * Math.exp(-Math.pow((yy - 0.45) / 0.12, 2)) + 0.45 * Math.exp(-Math.pow((ax - 0.9) / 0.045, 2)) - 0.0, lipD = Math.exp(-Math.pow((ax - 0.8) / 0.035, 2)), br = (0.22 + 0.78 * Math.pow(cz, 1.1)) * (1 - 0.5 * Math.exp(-Math.pow((yy - 0.15) / 0.16, 2)) - 0.45 * Math.exp(-Math.pow((yy + 0.72) / 0.12, 2))); return G.map((v, j) => cl(v * br * f * (1 - 0.55 * lipD) + hl * [1, 0.95, 0.75][j])); } o = o.map(v => v * f);
       if (screw) { const sh = 0.55 + 0.6 * cl(-(x - cw * 0.35) / (2.4 * k) - (y - ch * 0.62) / (2.4 * k)) * 0.5; o = o.map((v, j) => cl(v * sh + (Math.abs(x - cw * 0.35) < 0.5 * k ? -0.25 : 0))); }
       return o; } });
     put(g, c, -S, -S, S * 2, S * 2);
     return true;
   },
   link(g, p, r, ux, uy, len, col0) { // 颈部：短圆柱金属颈
-    const col = this.clipCol ? this.clipCol(col0) : jadeOf(col0) ? SILVER : GOLD, kk = (r.R / 151) * (r.clampScale || 1), nw = 8.5 * kk, x0 = p.R, x1 = len - 20 * kk, L2 = Math.max(1, (x1 - x0) / 2), m = (x0 + x1) / 2, ang = Math.atan2(uy, ux);
+    const LI = this.linkImg && TEX[this.linkImg]; if (LI && LI.complete && LI.naturalWidth) { const kk0 = (r.R / 151) * (r.clampScale || 1), x0 = p.R, x1 = len - 20 * kk0, h = this.tubeHalf(r.R) * 0.93 * 2 * 1.12, w = Math.max(x1 - x0 + 6, h * LI.naturalWidth / LI.naturalHeight); g.save(); g.rotate(Math.atan2(uy, ux)); g.drawImage(LI, (x0 + x1) / 2 - w / 2, -h / 2, w, h); g.restore(); return; } // phase32：参考图小金扣
+    const col = this.clipCol ? this.clipCol(col0) : jadeOf(col0) ? SILVER : GOLD, kk = (r.R / 151) * (r.clampScale || 1), nw = 8.5 * kk * (this.linkW || 1), x0 = p.R, x1 = len - 20 * kk, L2 = Math.max(1, (x1 - x0) / 2), m = (x0 + x1) / 2, ang = Math.atan2(uy, ux);
     const ms = this.clipMetal === false ? paintShade(col, { gloss: 0.55, soft: true }) : metalShade(col, 0, nw, 0, 'neck');
     const c = solid(L2 * 2 + 24, nw * 2 + 24, L2 + 12, nw + 12, 3, (x, y) => sdBox(x, y, L2 + 2, nw, 2), nw, { ss: 2, light: UP, shadow: { dx: 0, dy: 0, blur: 6, a: 0.3 }, custom: (x, y, nx, ny, nz) => { const yy = cl(y / nw, -0.999, 0.999); return ms(x, y, 0, yy, Math.sqrt(1 - yy * yy)); } });
     g.save(); g.rotate(ang); g.translate(m, 0); put(g, c, -(L2 + 12), -(nw + 12), L2 * 2 + 24, nw * 2 + 24); g.restore();
   },
   brick(g, game, box, isTray, S, ballFn) { // 经典玉器匣：深色漆木匣体 + 金口沿 + 墨绿丝绒内衬；盒色 = 正面彩玉嵌片 + 孔位彩玉圈
     const hx0 = game.color(box.color), J = this.colJ ? this.colJ(hx0) : jadeOf(hx0) || JADE.white, w = 166, h = 78;
+    const BXI = this.boxImgs && candyBoxImg(isTray, box.color, this.boxPfx); if (BXI && BXI.complete && BXI.naturalWidth) { // phase33：参考图烘焙盒子
+      const BD = this.boxDims || [413, 186, 411, 176], bw0 = isTray ? BD[2] : BD[0], bh0 = isTray ? BD[3] : BD[1], sx = w / bw0, sy = isTray ? sx : h / bh0, oy = isTray ? (h - bh0 * sy) / 2 : 0; /* phase37：托盘等比（孔不变椭圆） */ g.save(); g.shadowColor = 'rgba(60,30,10,0.35)'; g.shadowBlur = 10; g.shadowOffsetY = 5; g.drawImage(BXI, -w / 2 - 12 * sx, oy - 12 * sy, (bw0 + 24) * sx, (bh0 + 24) * sy); g.restore();
+      if (isTray) { const cap = S.boxCapacity; for (let i = 0; i < Math.min(cap, box.n); i++) ballFn((i - (cap - 1) / 2) * 44.6, oy + bh0 * sy / 2); } return; }
     // phase19：彩玉匣（参考图）：盒色半透玉体 + 斜面倒角 + 金口沿；托盘（首行）= 同色玉托 + 3 个金圈深孔；排队盒 = 圆角彩玉板
     const body = solid(w + 44, h + 50, w / 2 + 22, 16, KS, (x, y) => sdBox(x, y - (h + 4) / 2, w / 2, (h + 4) / 2, 20), 16, { custom: this.boxShade ? this.boxShade(hx0) : jadeShade(J, 9 + (isTray ? 0 : 4), 0, 90, 1, true), shadow: { dx: 0, dy: 10, blur: 16, a: 0.45 } });
     g.drawImage(body, -w / 2 - 22, -16, w + 44, h + 50);
-    g.save(); RR(g, -w / 2 + 3, 3, w - 6, h - 2, 17); let gg = g.createLinearGradient(0, 0, 0, h); gg.addColorStop(0, '#fff3c4'); gg.addColorStop(0.35, GOLD); gg.addColorStop(1, '#7a520c'); g.lineWidth = isTray ? 4.5 : 3; g.strokeStyle = this.boxRim ? this.boxRim(J) : gg; g.stroke();
-    RR(g, -w / 2 + 12, 10, w - 24, h - 16, 12); g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,0.35)'; g.stroke(); g.restore();
+    if (this.lacquerBox) { g.save(); RR(g, -w / 2 + 1, 1, w - 2, h + 2, 19); g.lineWidth = 2.5; g.strokeStyle = this.boxOutline || 'rgba(30,14,4,0.85)'; g.stroke(); RR(g, -w / 2 + 6, 5, w - 12, h - 8, 14); g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,0.28)'; g.stroke(); g.restore(); } // phase26 木质参考图：漆木块=细黑描边+斜面高光，无金边
+    else { g.save(); RR(g, -w / 2 + 3, 3, w - 6, h - 2, 17); let gg = g.createLinearGradient(0, 0, 0, h); gg.addColorStop(0, '#fff3c4'); gg.addColorStop(0.35, GOLD); gg.addColorStop(1, '#7a520c'); g.lineWidth = isTray ? 4.5 : 3; g.strokeStyle = this.boxRim ? this.boxRim(J) : gg; g.stroke();
+    RR(g, -w / 2 + 12, 10, w - 24, h - 16, 12); g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,0.35)'; g.stroke(); g.restore(); }
+    if (this.boxWell && !isTray) { g.save(); RR(g, -w / 2 + 11, 9, w - 22, h - 14, 11); g.clip(); let wg = g.createLinearGradient(0, 9, 0, h - 5); wg.addColorStop(0, 'rgba(0,0,0,0.34)'); wg.addColorStop(0.22, 'rgba(0,0,0,0.10)'); wg.addColorStop(0.8, 'rgba(0,0,0,0.04)'); wg.addColorStop(1, 'rgba(255,255,255,0.10)'); g.fillStyle = wg; g.fillRect(-w / 2, 0, w, h); g.restore(); g.save(); RR(g, -w / 2 + 11, 9, w - 22, h - 14, 11); g.lineWidth = 2; g.strokeStyle = 'rgba(20,8,0,0.45)'; g.stroke(); RR(g, -w / 2 + 10, 8, w - 20, h - 12, 12); g.lineWidth = 1.2; g.strokeStyle = 'rgba(255,255,255,0.0)'; g.stroke(); g.beginPath(); g.moveTo(-w / 2 + 20, h - 4.5); g.lineTo(w / 2 - 20, h - 4.5); g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,0.35)'; g.stroke(); g.restore(); } // phase29：参考图盒面中间内凹（上沿内阴影 + 下沿高光）
     if (!isTray) return;
-    const hole = solid(40, 40, 20, 20, KS, (x, y) => Math.hypot(x, y) - 15, 6, { color: this.trayHoleTint ? jadeHex(J, 0.7) : (this.holeCol || '#0b2f24'), mat: 'rubber', concave: true }); // 彩块参考图：托盘孔为同色内凹
-    const cap = S.boxCapacity; for (let i = 0; i < cap; i++) { const hx = (i - (cap - 1) / 2) * 44; g.drawImage(hole, hx - 20, 32 - 20, 40, 40); g.save(); g.beginPath(); g.arc(hx, 32, 16.5, 0, TAU); g.lineWidth = 3; g.strokeStyle = jadeHex(J, 0.95); g.stroke(); g.beginPath(); g.arc(hx, 32, 18.8, 0, TAU); g.lineWidth = 1.2; g.strokeStyle = 'rgba(255,220,130,0.9)'; g.stroke(); g.restore(); if (i < box.n) ballFn(hx, 32); }
+    if (this.lacquerBox) { g.save(); RR(g, -w / 2 + 14, 11, w - 28, h - 20, 9); g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.30)'; g.stroke(); RR(g, -w / 2 + 15.5, 13, w - 31, h - 22, 8); g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,0.30)'; g.stroke(); g.restore(); } // 参考图：托盘内凹面板
+    const hole = solid(40, 40, 20, 20, KS, (x, y) => Math.hypot(x, y) - 15, 6, { color: this.trayHoleTint ? jadeHex(J, this.holeTintK || 0.7) : (this.holeCol || '#0b2f24'), mat: 'rubber', concave: true }); // 彩块参考图：托盘孔为同色内凹
+    const cap = S.boxCapacity; for (let i = 0; i < cap; i++) { const hx = (i - (cap - 1) / 2) * 44; g.drawImage(hole, hx - 20, 32 - 20, 40, 40); if (this.lacquerBox) { g.save(); g.beginPath(); g.arc(hx, 32, 15.5, 0.15 * Math.PI, 0.85 * Math.PI); g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,0.35)'; g.stroke(); g.restore(); if (i < box.n) ballFn(hx, 32); continue; } g.save(); g.beginPath(); g.arc(hx, 32, 16.5, 0, TAU); g.lineWidth = 3; g.strokeStyle = jadeHex(J, 0.95); g.stroke(); g.beginPath(); g.arc(hx, 32, 18.8, 0, TAU); g.lineWidth = 1.2; g.strokeStyle = 'rgba(255,220,130,0.9)'; g.stroke(); g.restore(); if (i < box.n) ballFn(hx, 32); }
   },
 
-  pit(g) { const c = solid(40, 40, 20, 20, KS, (x, y) => Math.hypot(x / 17, y / 15.5) * 15.5 - 15.5, 7, { color: this.pitCol || '#241338', mat: 'rubber', concave: true }); g.drawImage(c, -20, -20, 40, 40); },
+  pit(g) { const c = solid(40, 40, 20, 20, KS, (x, y) => Math.hypot(x / 17, y / 15.5) * 15.5 - 15.5, 7, { color: this.pitCol || '#241338', mat: 'rubber', concave: true }); g.drawImage(c, -20, -20, 40, 40); if (this.pitLip) { g.save(); g.beginPath(); g.arc(0, 0, 15.5, 0, Math.PI * 2); g.clip(); const lg = g.createLinearGradient(0, -16, 0, 16); lg.addColorStop(0, 'rgba(10,0,20,0.75)'); lg.addColorStop(0.45, 'rgba(10,0,20,0.15)'); lg.addColorStop(1, 'rgba(10,0,20,0)'); g.fillStyle = lg; g.fillRect(-17, -17, 34, 34); g.restore(); g.beginPath(); g.arc(0, 0, 15.8, 0.12 * Math.PI, 0.88 * Math.PI); g.lineWidth = 2; g.strokeStyle = 'rgba(220,200,255,0.55)'; g.stroke(); } }, // phase31：参考图孔——上沿深内阴影 + 下沿浅亮唇
   topUI(g, game) { // 玉牌关卡胶囊（金边）+ 圆形玉扣暂停钮
+    const PI_ = this.plaqueImg && TEX[this.plaqueImg], BI_ = this.pauseImg && TEX[this.pauseImg];
+    if (PI_ && PI_.complete && PI_.naturalWidth && BI_ && BI_.complete && BI_.naturalWidth) { // phase26：木质牌匾/暂停钮直接用参考图烘焙图（同参考比例 1/2.5）
+      const pk = 1.1 / 2.5; g.drawImage(PI_, 432 - PI_.naturalWidth * pk / 2, 157 - PI_.naturalHeight * pk / 2, PI_.naturalWidth * pk, PI_.naturalHeight * pk);
+      g.font = '700 42px RB, Roboto, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(40,18,4,0.6)'; g.fillText('Level ' + (game.levelIdx + 1), 432, 159); g.fillStyle = this.plaqueText || '#fff3dc'; g.fillText('Level ' + (game.levelIdx + 1), 432, 157);
+      g.drawImage(BI_, 776 - BI_.naturalWidth * pk / 2, 160 - BI_.naturalHeight * pk / 2, BI_.naturalWidth * pk, BI_.naturalHeight * pk); return;
+    }
     const J = JADE.green, uk = this.uiK || 1; g.save(); g.translate(432, 156); g.scale(uk, uk); g.translate(-432, -156);
     const pill = solid(250, 124, 125, 58, KS, (x, y) => sdBox(x, y, 104, 40, 18), 16, { custom: this.plaqueShade || jadeShade(J, 5, 0, 60, 1, true), shadow: { dx: 0, dy: 8, blur: 14, a: 0.38 } });
     g.drawImage(pill, 432 - 125, 156 - 58, 250, 124);
@@ -506,22 +573,49 @@ const jadeTheme = {
 // ===== phase20/21：彩绘材质主题（木质 / 彩块）—— 复用玉石主题的全部几何/缓存/分段异步生成管线，只替换材质着色函数 =====
 const vivid = (c, k) => c.map(v => cl(0.5 + (v - 0.5) * 1.0) * k);
 function paintShade(colHex, o) { // o: { grain, gloss, soft, along(x,y) }
-  const base = hex(colHex);
+  const base = hex(colHex).map(v => Math.pow(v, o.deep || 1));
   return (x, y, nx, ny, nz) => {
     const ndl = cl(-0.35 * nx - 0.55 * ny + 0.76 * nz), hv = [-0.35, -0.55, 1.76], hl = Math.hypot(...hv), ndh = Math.max(0, (nx * hv[0] + ny * hv[1] + nz * hv[2]) / hl);
-    let gr = 1; if (o.grain) { const a = o.along ? o.along(x, y) : x; const w = fbm(a / 90, y / (o.fine ? 3.5 : 7) + x / 300, 3); gr = 0.82 + 0.18 * (0.5 + 0.5 * Math.sin(a * 0.05 + w * 9)) - 0.08 * Math.pow(fbm(x / 13, y / 13, 2), 3); }
-    if (o.grain) gr = 0.86 + (gr - 0.82) * (o.fine ? 0.9 : 1.3); // phase24：参考图为细纹亮漆，降对比
-    const sp = o.gloss * (Math.pow(ndh, o.soft ? 18 : 60) + (o.soft ? 0.25 * Math.pow(ndh, 4) : 0)), rim = Math.pow(1 - nz, 3) * (o.soft ? 0.15 : 0.45);
+    let gr = 1, ln = 0; if (o.grain) { // phase26：亮漆细木纹——沿管/沿盒长向的细密顺纹 + 少量亮丝（参考图），不再是屏幕横向粗刷痕
+      const a = o.along ? o.along(x, y) : x, q = o.across ? o.across(x, y) : y, w = fbm(a / 70, q / 3, 3);
+      const line = 0.5 + 0.5 * Math.sin(q * (o.qf || 1.15) + w * 7 + 3.5 * fbm(a / 22, q / 5, 2));
+      gr = 0.88 + 0.12 * line - 0.10 * Math.pow(fbm(a / 30, q / 1.4, 2), 2); ln = Math.pow(line, 8) * 0.16; if (o.faint) { gr = 1 - (1 - gr) * o.faint; ln *= o.faint; } gr *= o.dim || 1;
+    }
+    const sp = ln * (0.4 + ndl) + o.gloss * (Math.pow(ndh, o.soft ? 18 : (o.grain ? 34 : 60)) + (o.soft ? 0.25 * Math.pow(ndh, 4) : (o.grain ? 0.18 * Math.pow(ndh, 5) : 0))), rim = Math.pow(1 - nz, 3) * (o.soft ? 0.15 : 0.45);
     return base.map(c => cl(c * gr * ((o.soft ? 0.62 : 0.5) + (o.soft ? 0.5 : 0.62) * ndl) - rim * c + sp)).concat(1);
   };
 }
 const paintJ = colHex => { const b = hex(colHex); return { base: b.map(v => cl(v * 1.1 + 0.05)), deep: b.map(v => v * 0.55) }; };
+// phase30：木质环——按参考图像素取样：管面近乎平光（中段≈0.78×色），左上缘亮边，沿管长条刷纹 ±18%，少量白色漆面亮丝，右下缘暗线
+function woodRingShade(colHex, R, th) { const base = hex(colHex).map((v, j) => Math.pow(v, 1.3) * 0.86 + 0.05 - (j === 2 ? 0.06 : 0));
+  return (x, y, nx, ny, nz) => { const a = Math.atan2(y, x) * R, q = Math.hypot(x, y) - R, t = q / th;
+    const ndl = cl(-0.35 * nx - 0.55 * ny + 0.76 * nz), ndh = Math.max(0, (-0.35 * nx - 0.55 * ny + 1.76 * nz) / 1.88);
+    const st = fbm(a / 90, q / 2.2, 3), st2 = fbm(a / 30 + 4, q / 1.1, 2), streak = 0.86 + 0.30 * (st - 0.5) * 2 * 0.6 - 0.12 * Math.pow(st2, 3);
+    const st3 = fbm(a / 55 + 9, q / 0.9, 3), silk = (Math.pow(cl(1 - Math.abs(st2 - 0.62) / 0.04), 2) * 0.35 + Math.pow(cl(1 - Math.abs(st3 - 0.55) / 0.03), 2) * 0.28) * (0.3 + ndl);
+    const rimL = Math.pow(cl(-(nx * 0.6 + ny * 0.8)), 3) * 0.22 * (1 - nz), rimD = Math.pow(cl(nx * 0.6 + ny * 0.8), 2) * 0.35 * (1 - nz);
+    const w = fbm(a / 80, q / 4, 3), ln = Math.sin(q * 0.95 + w * 7), on = sm(0.42, 0.58, fbm(a / 60 + 5, q / 8, 2)), crisp = Math.pow(cl(ln), 16) * 0.85 * on * (0.25 + ndl), brush = Math.pow(cl(-ln), 10) * 0.22; // phase31：湿漆细白亮丝 + 红漆刷痕暗丝
+    const L = (0.80 + 0.22 * ndl) * streak * (1 - rimD) * (1 - brush), sp = 0.62 * Math.pow(ndh, 70) + 0.10 * Math.pow(ndh, 12) + silk * 0.8 + crisp + rimL * 1.4;
+    return base.map(c => cl(c * L + sp * (0.55 + 0.45 * c))).concat(1); }; }
+// phase32：木质环改为参考图烘焙纹理——参考红环管面极坐标展开成"截面×长度"条带（去色细节 D + 截面明暗 P），按环色着色、沿弧映射
+import { JR_W, JR_H, JR_D, JR_P } from './jadeRingTex.js'; let JRT = null; // phase36：玉石环 = 用户参考图红玉环管面展开条带
+import { CR_W, CR_H, CR_D, CR_P } from './candyRingTex.js'; let CRT = null; // phase39：彩块环 = 参考图红糖果环管面展开条带
+const CRTX = { W: CR_W, H: CR_H, g: 1.0, k: 1.0, t: () => CRT || (CRT = { D: Uint8Array.from(atob(CR_D), ch => ch.charCodeAt(0)), P: Uint8Array.from(atob(CR_P), ch => ch.charCodeAt(0)) }) };
+const JRTX = { W: JR_W, H: JR_H, g: 1.0, k: 0.92, t: () => JRT || (JRT = { D: Uint8Array.from(atob(JR_D), ch => ch.charCodeAt(0)), P: Uint8Array.from(atob(JR_P), ch => ch.charCodeAt(0)) }) };
+let WRT = null; const wrt = () => WRT || (WRT = { D: Uint8Array.from(atob(WR_D), ch => ch.charCodeAt(0)), P: Uint8Array.from(atob(WR_P), ch => ch.charCodeAt(0)) });
+function woodRingBaked(colHex, R, hw, TX) { const T = TX ? TX.t() : wrt(), WR_W = TX ? TX.W : WR_W0, WR_H = TX ? TX.H : WR_H0, base = TX ? hex(colHex).map(v => Math.pow(v, TX.g) * TX.k) : hex(colHex).map((v, j) => Math.pow(v, 1.2) * 0.8 + 0.02 - (j === 2 ? 0.03 : 0)), sc = 48 / hw, nrep = Math.max(1, Math.round(2 * Math.PI * R * sc * 0.5 / WR_W));
+  const samp = (u, v) => { u = ((u % WR_W) + WR_W) % WR_W; const u0 = Math.floor(u), fu = u - u0, u1 = (u0 + 1) % WR_W, v0 = Math.max(0, Math.min(WR_H - 1, Math.floor(v))), v1 = Math.min(WR_H - 1, v0 + 1), fv = cl(v - v0);
+    const A = T.D[v0 * WR_W + u0], B = T.D[v0 * WR_W + u1], C = T.D[v1 * WR_W + u0], Dd = T.D[v1 * WR_W + u1]; return ((A * (1 - fu) + B * fu) * (1 - fv) + (C * (1 - fu) + Dd * fu) * fv) / 100; };
+  const prof = v => { v = Math.max(0, Math.min(WR_H - 1, v)); const v0 = Math.floor(v), v1 = Math.min(WR_H - 1, v0 + 1), f = v - v0; return (T.P[v0] * (1 - f) + T.P[v1] * f) / 100; };
+  return (x, y, nx, ny, nz) => { const d = Math.hypot(x, y) || 1, a = Math.atan2(y, x) * R, t = cl((d - R) / hw, -1, 1), row = (t + 1) / 2 * (WR_H - 1);
+    const dl = (-0.35 * x - 0.55 * y) / (0.652 * d), w = cl((0.4 - dl) / 0.8), P = prof(row) * (1 - w) + prof(WR_H - 1 - row) * w;
+    const Lr = P * samp((Math.atan2(y, x) / (2 * Math.PI) + 0.5) * nrep * WR_W, row);
+    return base.map(c => cl(Lr <= 1 ? c * Lr : c + (1 - c) * (Lr - 1) * 0.75)).concat(1); }; }
 function makePaintTheme(o) {
   const ringCol = c => jadeOf(c) ? c : o.anchor;
   return { ...jadeTheme, ...o,
-    ringShade(c, R) { return paintShade(ringCol(c), { grain: o.grain, gloss: o.gloss, soft: o.soft, along: (x, y) => Math.atan2(y, x) * R }); },
+    ringShade(c, R, hw) { if (o.woodRing && hw) return woodRingBaked(ringCol(c), R, hw); if (o.woodRing) return woodRingShade(ringCol(c), R, Math.min(o.tw(R), TUBE_HALF_MAX(R))); return paintShade(ringCol(c), { grain: o.grain, gloss: o.ringGloss ?? o.gloss, soft: o.soft, along: (x, y) => Math.atan2(y, x) * R, across: (x, y) => Math.hypot(x, y), qf: 0.55, deep: o.ringDeep || (o.grain ? 1.18 : 1), faint: o.ringGrainK, dim: o.ringDim }); },
     ballShade(c) { return paintShade(c, { grain: false, gloss: o.gloss * 1.2, soft: o.soft }); },
-    boxShade(c) { return paintShade(c, { grain: o.grain, fine: true, gloss: o.gloss * 0.6, soft: o.soft }); },
+    boxShade(c) { return paintShade(c, { grain: o.grain, across: (x, y) => y * 0.5 + 5 * fbm(x / 90, y / 30, 2), faint: 0.6, gloss: o.boxGloss ?? o.gloss * 0.9, soft: o.soft }); },
     colJ: paintJ,
     plaqueShade: paintShade(o.plaque, { grain: o.grain, gloss: 0.35, soft: o.soft }),
     btnShade: paintShade(o.btn || o.plaque, { grain: o.grain, gloss: 0.5, soft: o.soft }),
@@ -540,17 +634,37 @@ function makePaintTheme(o) {
 }
 const woodTheme = makePaintTheme({
   id: 'wood', name: '木质', desc: '木纹彩绘粗环 + 金箍 + 彩漆木珠 + 深色拼板雕框木盘 + 木框紫带 + 彩漆木牌（参考：木质材质图）',
-  sceneKey: 'woodScene', tw: R => R * 0.215, endCap: true, railBeads: GOLD, railBeadN: 3, railBeadR: 8.5, beltKnobs: GOLD, clipSplit: true, shadowCol: 'rgba(28,14,4,0.6)', ballK: 1.2, clipK: 1.8, clipKh: 1.25, uiK: 1.15, grain: true, gloss: 0.35, soft: false, anchor: '#dcb98c', plaque: '#8a5a32', btn: '#9a6638', beltFrameCol: '#7a4a26',
-  beltJ: { deep: [0.30, 0.20, 0.42], base: [0.56, 0.46, 0.68] }, railCol: GOLD, holeCol: '#2c1c2e', pitCol: '#2c1c2e',
+  sceneKey: 'woodScene', plaqueImg: 'woodPlaque', pauseImg: 'woodPause', lacquerBox: true, ringGloss: 0.16, ringDeep: 1.3, ringGrainK: 1.7, ringDim: 0.9, boxGloss: 0.22, boxWell: true, woodRing: true, clipImg: 'woodClipBig', beltImg: 'woodBelt', linkImg: 'woodClipSmall', // phase29：环降光泽/降亮度、木纹更明显；盒子中间内凹
+  trayHoleTint: true, tw: R => R * 0.215, endCap: true, railBeads: GOLD, railBeadN: 2, railBeadR: 11, railSpacer: true, pitLip: true, beltKnobs: GOLD, clipSplit: false, clipRolled: true, shadowCol: 'rgba(28,14,4,0.6)', ballK: 1.2, clipK: 2.25, clipKh: 1.05, linkW: 2.3, uiK: 1.15, beltStreak: true, grain: true, gloss: 0.5, soft: false, anchor: '#e4b67c', plaque: '#8a5a32', btn: '#9a6638', beltFrameCol: '#7a4a26',
+  beltJ: { deep: [0.36, 0.27, 0.50], base: [0.55, 0.45, 0.69] }, railCol: GOLD, holeCol: '#4b2c6e', pitCol: '#3a2452', // phase30：参考图带面浅薰衣草紫 + 横向木纹丝
+ 
   clipCol: () => GOLD, clipMetal: true, boxRim: () => 'rgba(60,32,14,0.55)',
 });
 const candyTheme = makePaintTheme({
   id: 'candy', name: '彩块', desc: '卡通糖果塑料纯色圆管环（柔高光）+ 浅木拼板底 + 米色圆角框 + 绿叶 + 木牌关卡 + 橙色暂停 + 紫色圆角传送带 + 亮色彩块',
-  sceneKey: 'candyScene', tw: R => R * 0.225, railBeads: '#3a3470', railBeadR: 11, railBeadN: 3, trayHoleTint: true, shadowCol: 'rgba(40,20,60,0.45)', ballK: 1.15, clipK: 1.7, clipKh: 1.3, uiK: 1.3, grain: false, gloss: 0.55, soft: true, anchor: '#c9c9cf', plaque: '#7a4628', btn: '#ffb21c', beltFrameCol: '#5b4fc4',
-  beltJ: { deep: [0.40, 0.35, 0.80], base: [0.45, 0.40, 0.87] }, railCol: '#c9c9d6', holeCol: '#3a2f96', pitCol: '#3a2f96',
+  sceneKey: 'candyScene', boxImgs: true, ballImg: 'candyBall', beltImg: 'candyBelt', beltBox: [24, 24, 1858, 332, 1906, 380], plaqueImg: 'candyPlaque', pauseImg: 'candyPause', lacquerBox: true, boxOutline: 'rgba(0,0,0,0.10)', holeTintK: 0.3, beltFlat: true, railBeads: '#2b2452', railBeadCount: 6, railBeadR: 10, railStep: 3.1, railHalf: 4.5, pitLip: true, // phase33：参考图细银杆 + 大深色珠
+  plaqueText: '#fff6e6', trayHoleTint: true, shadowCol: 'rgba(40,20,60,0.45)', ballK: 1.15, clipK: 1.7, clipKh: 1.3, uiK: 1.3, grain: false, gloss: 0.55, soft: true, anchor: '#c9c9cf', plaque: '#7a4628', btn: '#ffb21c', beltFrameCol: '#5b4fc4',
+  beltJ: { deep: [0.40, 0.35, 0.80], base: [0.45, 0.40, 0.87] }, railCol: '#a8aabf', holeCol: '#3a2f96', pitCol: '#4a42a6',
   clipCol: c => jadeOf(c) ? c : '#c4c5cc', clipMetal: false, boxRim: J => '#' + J.deep.map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join(''),
 });
 
+// phase27（t70u）：彩块的环/夹扣/颈部改用原版环模型（assets/named 精灵），其余（底板/框/牌匾/传送带/盒子）按彩块参考图
+woodTheme.beltFrame = paintShade('#c9a04a', { grain: false, gloss: 0.9, soft: false }); // phase30：参考图传送带细金边
+candyTheme.boxShade = c => paintShade(c, { grain: false, gloss: 0.3, soft: true, deep: 1.25 });
+for (const k of ['ring', 'clip', 'link', 'ringShadow', 'tubeHalf', 'ringShade']) candyTheme[k] = undefined;
+candyTheme.ringShade = function (c, R, hw) { if (!hw) return undefined; const hc = hex(c), d2 = h => hex(h).reduce((q, v, j) => q + (v - hc[j]) ** 2, 0), nb = Object.values(CB_TGT).sort((A, B) => d2(A) - d2(B))[0]; const mx = Math.max(...hc), mn = Math.min(...hc); const f = woodRingBaked(mx - mn < 0.1 ? '#e2d8cf' : nb && d2(nb) < 0.12 ? nb : c, R, hw, CRTX); /* phase40：宽亮高光带 + 内缘亮边 */ return (x, y, nx, ny, nz) => { const o = f(x, y, nx, ny, nz), d = Math.hypot(x, y) || 1, t = cl((d - R) / hw, -1, 1), lt = cl((-0.35 * x - 0.55 * y) / (0.652 * d) * 0.5 + 0.6), hb = Math.exp(-(((t + 0.12) / 0.32) ** 2)) * 0.32 * lt, rim = Math.exp(-(((t + 0.86) / 0.1) ** 2)) * 0.22; const k = hb + rim; return [o[0] + (1 - o[0]) * k, o[1] + (1 - o[1]) * k, o[2] + (1 - o[2]) * k, o[3]]; }; }; /* 灰锚环 = 参考暖米白 */ candyTheme.ringShadow = function (g, game, r, b) { const s = Object.create(this), T = (game.S && game.S.ringThick) || 30; s.tubeHalf = () => T / 2; return woodTheme.ringShadow.call(s, g, game, r, b); }; candyTheme.shadowCol = 'rgba(80,38,10,0.68)'; candyTheme.clipFilter = 'sepia(0.35) saturate(1.1) brightness(1.06) contrast(1.05)'; 
+const PAINT_RING = jadeTheme.ring; candyTheme.ring = function (g, game, r, T) { const self = Object.create(this); self.tubeHalf = () => T / 2 / 0.93; return PAINT_RING.call(self, g, game, r); }; // phase39：环模型仍为原版（tubeHalf/SDF），仅管面材质烘焙自参考
+// phase28：玉石盒子按参考图——浅色半透大理石纹彩玉块 + 柔光倒角 + 细暗金描边；托盘同色玉托 + 3 个同色内凹孔
+jadeTheme.boxShade = colHex => { const b = hex(colHex).map(v => cl(v * 0.95 + 0.06));
+  return (x, y, nx, ny, nz) => { const ndl = cl(-0.35 * nx - 0.55 * ny + 0.76 * nz), ndh = Math.max(0, (-0.35 * nx - 0.55 * ny + 1.76 * nz) / 1.88);
+    const cloud = fbm(x / 45 + 7, y / 30, 4), vein = Math.exp(-Math.pow((fbm(x / 60 + 2, y / 28 + 4, 4) - 0.5) / 0.05, 2)), vein2 = Math.exp(-Math.pow((fbm(x / 25, y / 18 + 9, 3) - 0.5) / 0.02, 2));
+    const wv = 0.10 * (cloud - 0.5) * 2 + 0.16 * vein + 0.05 * vein2, sp = 0.35 * Math.pow(ndh, 22) + 0.08 * Math.pow(ndh, 4), rim = Math.pow(1 - nz, 2) * 0.25;
+    return b.map(c => cl(c * (0.66 + 0.42 * ndl) * (1 - rim) + wv * (1 - c * 0.6) + sp)).concat(1); }; };
+Object.assign(jadeTheme, { lacquerBox: true, boxOutline: 'rgba(96,70,18,0.9)', trayHoleTint: true, holeTintK: 0.6 });
+// phase36：玉石环改为参考图烘焙条带（光滑整管，无竹节）；锚环 = 青白玉
+Object.assign(jadeTheme, { tw: R => R * 0.215, endCap: true, clipImg: 'jadeClipBig', linkImg: 'jadeClipSmall', ballShade(c) { return paintShade(c, { grain: false, gloss: 0.6, soft: true }); }, ringShade(c, R, hw) { if (!hw) return undefined; const h3 = hex(c), sat = Math.max(...h3) - Math.min(...h3), cc = !jadeOf(c) || sat < 0.12 ? '#93c9ae' : c; /* phase37：锚环/白玉 = 参考青白玉 */ return woodRingBaked(cc, R, hw, JRTX); } });
+// phase34：玉石按用户参考图烘焙：场景/牌匾/暂停/带体/盒子托盘（仅玉石，木质/彩块已先行构造不受影响）
+Object.assign(jadeTheme, { plaqueImg: 'jadePlaque', pauseImg: 'jadePause', plaqueText: '#f4fff8', boxImgs: true, boxPfx: 'jb', boxDims: [425, 186, 420, 172], beltImg: 'jadeBelt', beltBox: [24, 24, 1815, 333, 1863, 381], railCol: GOLD, railHalf: 4.5, railBeads: GOLD, railBeadN: 0, railBeadCount: 5, railBeadR: 9, railStep: 2.6, pitCol: '#3a2a5e', pitLip: true });
 export const THEMES = {
   default: { id: 'default', name: '原版', desc: '参考视频美术（assets/named/*.png）' },
   jade: jadeTheme,
@@ -558,6 +672,33 @@ export const THEMES = {
   candy: candyTheme,
 };
 export const THEME_OPTIONS = Object.values(THEMES).map(t => [t.id, t.name]);
+export const THEME_IDS = Object.keys(THEMES);
+export const DEFAULT_EXPORT_THEMES = THEME_IDS.join(',');
+export function parseExportThemes(v) {
+  const all = THEME_IDS;
+  if (v == null || v === '' || v === 'all') return [...all];
+  if (Array.isArray(v)) { const o = [...new Set(v.map(String).filter(id => all.includes(id)))]; return o.length ? o : [...all]; }
+  const parts = String(v).split(/[,|;\s]+/).map(s => s.trim()).filter(Boolean);
+  const o = [...new Set(parts.filter(id => all.includes(id)))];
+  return o.length ? o : [...all];
+}
+export const themePrefix = id => (!id || id === 'default') ? '' : id + ':';
+export function stripThemePrefixes(s) {
+  let out = String(s || ''), prev;
+  do { prev = out; for (const id of THEME_IDS) if (id !== 'default') out = out.split(id + ':').join(''); out = out.replace(/^(?:lq|mq):/, ''); } while (out !== prev);
+  return out;
+}
+export function remapAssetKey(asset, fromId, toId) {
+  const fp = themePrefix(fromId), tp = themePrefix(toId);
+  if (fp && tp) return String(asset).split(fp).join(tp);
+  if (fp && !tp) return String(asset).split(fp).join('');
+  if (!fp && tp) {
+    const m = /^(rshadow\d+_)(ring_.*)$/.exec(asset);
+    if (m) return tp + m[1] + tp + m[2];
+    return tp + asset;
+  }
+  return asset;
+}
 let cur = THEMES.default;
 export const theme = () => cur;
 // 传送带带面外观（玉石主题）：明度/饱和度/色相/对比度 + 可上传图片替换。逐像素调色（不依赖 ctx.filter，H5 旧 Safari 一致）

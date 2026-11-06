@@ -1,7 +1,7 @@
 // 逐帧元素表（frameItems）+ 精灵缓存：屏幕渲染、AE 导出、3D 导出共用同一份数据，保证三者一致。
 // item = { id(稳定), asset(精灵键), x, y, sc, rot(弧度), op, z, add? }，坐标为设计坐标 864×1920。
 import { GEO, TAU, ease, clamp, mix } from './game.js';
-import { theme, spritePrefix, runJob } from './themes.js';
+import { theme, spritePrefix, runJob, stripThemePrefixes } from './themes.js';
 import { CLIP_NECK_LEN } from './game.js';
 import { clipBlockHalf } from './levels.js';
 import { RR, ballSprite, drawRing, drawBrick, star, drawTopUI, drawClampArt, designLayout } from './render.js';
@@ -52,8 +52,8 @@ export function frameItems(game, S, ctx = {}) {
   // 传送带凹坑
   const n = game.belt.slots.length, pit = need('pit', 40, 40, 20, 20, g => { if (theme().pit) return theme().pit(g); g.beginPath(); g.ellipse(0, 0, 17, 15.5, 0, 0, TAU); g.fillStyle = '#2a2149'; g.fill(); g.beginPath(); g.ellipse(0, 2.5, 15, 12, 0, 0, TAU); g.fillStyle = '#1d1636'; g.fill(); });
   for (let i = 0; i < n; i++) { const p = game.beltPos(game.slotS(i)); P('pit_' + i, pit, p.x, p.y, 1); }
-  // 容量灯（关卡限制传送带容量时，例如 L20 = 6）：中轴上一排小灯，已占用=黄，满=红
-  if (game.belt.cap) { const used = game.belt.slots.filter(Boolean).length, full = used >= game.belt.cap;
+  // 容量灯（关卡限制传送带容量时，例如 旧 L20 = 6）：中轴上一排小灯，已占用=黄，满=红
+  if (game.belt.cap && game.belt.cap < game.belt.slots.length) { const used = game.belt.slots.filter(Boolean).length, full = used >= game.belt.cap;
     for (let i = 0; i < game.belt.cap; i++) { const st = i < used ? (full ? 'full' : 'on') : 'off', col = { on: '#ffd23a', full: '#ff3b3b', off: '#3a2f6a' }[st];
       const k = need('caplight_' + st, 22, 22, 11, 11, g => { if (theme().capLight) return theme().capLight(g, st); g.beginPath(); g.arc(0, 0, 8, 0, TAU); g.fillStyle = col; g.fill(); g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.45)'; g.stroke(); if (st !== 'off') { g.beginPath(); g.arc(-2.5, -2.5, 2.5, 0, TAU); g.fillStyle = 'rgba(255,255,255,0.7)'; g.fill(); } });
       P('caplight_' + i, k, 432 + (i - (game.belt.cap - 1) / 2) * 30, 1253.5, 1.5); } }
@@ -87,7 +87,7 @@ export function frameItems(game, S, ctx = {}) {
     const p = r.p, cl = r.clampLocal, len0 = Math.hypot(cl[0], cl[1]), ux = cl[0] / len0, uy = cl[1] / len0, col = game.color(p.color), dark = mix(col, '#000000', 0.35);
     const cg = clipGeom(r), off = cg.off, len = len0 + off, half = Math.ceil(len + 20); r.clipOff = off; // 颈部：父环外沿 → 夹块内沿，至少 CLIP_NECK_LEN 可见
     const lk = need(`link_L${L + 1}_${r.id}_${p.color}_n${off.toFixed(1)}`, half * 2, half * 2, half, half, g => { if (theme().link) return theme().link(g, p, r, ux, uy, len, col); g.beginPath(); g.moveTo(p.R * ux, p.R * uy); g.lineTo(ux * (len - cg.blockHalf * 0.5), uy * (len - cg.blockHalf * 0.5)); g.lineCap = 'butt'; const nw = 48 * (r.R / 151) * (r.clampScale || 1); g.lineWidth = nw + 4; g.strokeStyle = dark; g.stroke(); g.lineWidth = nw; g.strokeStyle = col; g.stroke(); }); // 颈部：与父环同色，宽度=夹子颈宽，从父环中心线接到夹块
-    P(`link_L${L + 1}_${r.id}`, lk, p.c[0], p.c[1], (ZR[p.id] ?? 5) - 0.0004, { rot: r._frz ? r._frz.prot : p.rot }); // 颈部压在父环下面
+    P(`link_L${L + 1}_${r.id}`, lk, p.c[0], p.c[1], (ZR[p.id] ?? 5) - 0.0004, { rot: r._frz && S.clipFollowParent === false ? r._frz.prot : p.rot }); // 颈部压在父环下面
     const cw0 = game.clampWorld(r), du = Math.hypot(cw0[0] - p.c[0], cw0[1] - p.c[1]) || 1, cw = [cw0[0] + (cw0[0] - p.c[0]) / du * off, cw0[1] + (cw0[1] - p.c[1]) / du * off], a = Math.atan2(cw0[1] - r.c[1], cw0[0] - r.c[0]), w = T + 14, h = T + 12, cs = Math.ceil(Math.max(w, h, 160 * (r.R / 151) * (r.clampScale || 1)) + 20);
     const ck = need(`clip_${p.color}_${r.R}_${r.clampSprite || ''}_${r.clampRot ?? ''}`, cs, cs, cs / 2, cs / 2, g => { if (drawClampArt(g, game, r)) return; RR(g, -w / 2, -h / 2 + 2, w, h, 5); g.fillStyle = 'rgba(0,0,0,0.3)'; g.fill(); RR(g, -w / 2, -h / 2, w, h, 5); const gr = g.createLinearGradient(-w / 2, 0, w / 2, 0); gr.addColorStop(0, mix(col, '#ffffff', 0.35)); gr.addColorStop(0.5, col); gr.addColorStop(1, dark); g.fillStyle = gr; g.fill(); g.lineWidth = 2; g.strokeStyle = dark; g.stroke(); });
     const zp = ZR[p.id] ?? 5, zc = ZR[r.id] ?? 4, zClip = Math.max(zc + 0.0006, zp - 0.0002); // 夹块：在父环(同色)之下、被夹子环之上
@@ -122,6 +122,56 @@ export function drawItems(g, items, sprites = cache) {
     g.setTransform(L.s, 0, 0, L.s, L.ox, L.oy); g.translate(it.x, it.y); if (it.rot) g.rotate(it.rot); if (it.sc !== 1) g.scale(it.sc, it.sc);
     g.globalAlpha = clamp(it.op, 0, 1); g.globalCompositeOperation = it.add ? 'lighter' : 'source-over'; g.drawImage(s.c, -s.ax, -s.ay, s.w, s.h); }
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+}
+
+// 导出换肤：按当前 theme() 前缀补齐记录里用到的精灵（可解析的重绘；否则回退同 base 的其它主题缓存）
+export function ensureRecSprites(rec, game, S, bg) {
+  const P = spritePrefix(), all = () => Object.assign({}, archive, cache);
+  if (bg) cache[P + 'background'] = { c: bg, w: 864, h: 1920, ax: 0, ay: 0 };
+  const byBase = new Map();
+  for (const [k, v] of Object.entries(all())) { const b = stripThemePrefixes(k); if (!byBase.has(b)) byBase.set(b, v); }
+  const put = (want, spr) => { if (spr) cache[want] = spr; };
+  for (const tr of rec.tracks.values()) {
+    const want = tr.asset; if (all()[want]) continue;
+    const base = stripThemePrefixes(want);
+    let m;
+    if (base === 'background' && bg) { put(want, { c: bg, w: 864, h: 1920, ax: 0, ay: 0 }); continue; }
+    if (base === 'pit') { need('pit', 40, 40, 20, 20, g => { if (theme().pit) return theme().pit(g); g.beginPath(); g.ellipse(0, 0, 17, 15.5, 0, 0, TAU); g.fillStyle = '#2a2149'; g.fill(); }); continue; }
+    if ((m = /^ball_([a-z]+)_([\d.]+)$/.exec(base))) { const R0 = +m[2], col = game.color(m[1]), s = Math.ceil(R0 * 2 + 6); need(`ball_${m[1]}_${R0}`, s, s, s / 2, s / 2, g => { const sp = ballSprite(game.spriteCache, col, R0, m[1]); g.drawImage(sp, -(sp.dw || sp.width) / 2, -(sp.dw || sp.height) / 2, sp.dw || sp.width, sp.dw || sp.height); }); continue; }
+    if ((m = /^ring_(open|closed)_([a-z]+)_([\d.]+)_(-?[\d.]+)_([\d.]+)_(.*)$/.exec(base))) {
+      const r = { closed: m[1] === 'closed', color: m[2], R: +m[3], gapC: +m[4], gapW: +m[5], sprite: m[6], c: [0, 0], rot: 0, hl: 0, alive: true };
+      const T = S.ringThick, half = Math.ceil((r.R + T) * 2 * (r.spriteScale || 1) + 30);
+      need(base, half * 2, half * 2, half, half, g => drawRing(g, game, r, T)); continue;
+    }
+    if ((m = /^rshadow(\d+)_(ring_.*)$/.exec(base))) {
+      const rb = m[2]; if (!all()[P + rb] && !all()[P + 'mq:' + rb] && !all()[P + 'lq:' + rb]) {
+        const rm = /^ring_(open|closed)_([a-z]+)_([\d.]+)_(-?[\d.]+)_([\d.]+)_(.*)$/.exec(rb);
+        if (rm) { const r = { closed: rm[1] === 'closed', color: rm[2], R: +rm[3], gapC: +rm[4], gapW: +rm[5], sprite: rm[6], c: [0, 0], rot: 0, hl: 0, alive: true }; const T = S.ringThick, half = Math.ceil((r.R + T) * 2 + 30); need(rb, half * 2, half * 2, half, half, g => drawRing(g, game, r, T)); }
+      }
+      const ringKey = all()[P + rb] ? P + rb : (all()[P + 'mq:' + rb] ? P + 'mq:' + rb : P + rb);
+      if (theme().ringShadow) { const r = { R: 151, c: [0, 0], rot: 0, color: 'red', alive: true }; const T = S.ringThick, half = Math.ceil((151 + T) * 2 + 30); const b = +m[1]; need(`rshadow${b}_${ringKey}`, half * 2, half * 2, half, half, g => theme().ringShadow(g, game, r, b)); }
+      continue;
+    }
+    if ((m = /^(tray|brick)_([a-z]+)(?:_(\d+))?$/.exec(base))) {
+      const box = { color: m[2], n: m[3] != null ? +m[3] : 0 }; need(base, 180, 110, 90, 48, g => drawBrick(g, game, 0, -38, box, m[1] === 'tray', S)); continue;
+    }
+    if (base === 'star') { need('star', 44, 44, 22, 22, g => { if (theme().sparkle) return theme().sparkle(g); star(g, 0, 0, 20, 0); g.fillStyle = '#ffe23a'; g.fill(); }); continue; }
+    if (base === 'flash') { need('flash', 84, 84, 42, 42, g => { const gr = g.createRadialGradient(0, 0, 0, 0, 0, 40); gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 40, 0, TAU); g.fill(); }); continue; }
+    if ((m = /^hud_(\d+)$/.exec(base))) { need(base, 520, 125, -320, -102, g => drawTopUI(g, game, S)); continue; }
+    if ((m = /^shard_(\d+)_(.+)$/.exec(base))) {
+      const k = +m[1], col = m[2]; need(base, 40, 40, 20, 20, g => { const z = 15; g.beginPath(); if (k === 0) { g.moveTo(-z, -z * 0.6); g.lineTo(z * 0.8, -z); g.lineTo(z, z * 0.5); g.lineTo(-z * 0.5, z); } else if (k === 1) { g.moveTo(0, -z); g.lineTo(z, z * 0.7); g.lineTo(-z, z * 0.5); } else { g.moveTo(-z, 0); g.lineTo(0, -z); g.lineTo(z, 0); g.lineTo(0, z); } g.closePath(); g.fillStyle = col; g.fill(); }); continue;
+    }
+    if ((m = /^caplight_(on|off|full)$/.exec(base))) {
+      const st = m[1], col = { on: '#ffd23a', full: '#ff3b3b', off: '#3a2f6a' }[st];
+      need(base, 22, 22, 11, 11, g => { if (theme().capLight) return theme().capLight(g, st); g.beginPath(); g.arc(0, 0, 8, 0, TAU); g.fillStyle = col; g.fill(); }); continue;
+    }
+    // 回退：同 base 其它主题缓存（夹扣/连杆等难重建项）
+    if (byBase.has(base)) put(want, byBase.get(base));
+    else {
+      // 再试：去掉嵌套前缀后的模糊匹配
+      for (const [k, v] of Object.entries(all())) if (stripThemePrefixes(k) === base) { put(want, v); break; }
+    }
+  }
 }
 
 // 夹扣颈部几何：夹块中心 = 夹点(子环中心线)，不再外推；颈部 = 父环外沿 → 夹块内沿

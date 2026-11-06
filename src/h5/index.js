@@ -1,3 +1,4 @@
+import THEME_ASSETS from '../theme_assets_gen.js';
 /**
  * Shared H5 playable ad export for 核玩工具.
  * Injects window.__PLAYABLE__, strips editor chrome, wraps channel CTA shims, zips.
@@ -500,6 +501,8 @@ export function makePlayableHtml(baseHtml, opts = {}) {
   };
   let html = String(baseHtml);
   // Drop finger image data URLs (current + tool default) from the bundled JS too.
+  { const cur = (settings && settings.theme) || 'default'; // phase34：剔除非当前主题的专属贴图
+    for (const [t, ps] of Object.entries(THEME_ASSETS)) if (t !== cur) for (const p of ps) { const k = 'base64,' + p; let i; while ((i = html.indexOf(k)) >= 0) { const st = html.lastIndexOf('data:', i); let e = i + k.length; while (e < html.length && /[A-Za-z0-9+/=]/.test(html[e])) e++; html = html.slice(0, st) + html.slice(e); } } }
   for (const d of [handSrc, ...(opts.stripDataUrls || [])]) {
     if (typeof d === 'string' && d.startsWith('data:') && d.length > 200) html = html.split(d).join('');
   }
@@ -648,7 +651,7 @@ export function applyPlayableMode(hooks = {}) {
   return { active: true, autoPlay: !!P.autoPlay, format: P.format || 'generic', fit: runFit };
 }
 
-/** Fetch the tool's own built HTML (works on http(s); may fail on file://). */
+/** Fetch the tool's own built HTML (http(s) via fetch; file:// falls back to live DOM serialize). */
 export async function fetchBaseHtml() {
   const candidates = [];
   try {
@@ -668,7 +671,15 @@ export async function fetchBaseHtml() {
       if (t && t.length > 5000 && /<html/i.test(t) && /<script/i.test(t)) return t;
     } catch (e) { lastErr = e; }
   }
-  throw new Error('无法读取工具自身 HTML（请用 http/https 打开后再导出；file:// 不支持）。' + (lastErr ? ' (' + lastErr.message + ')' : ''));
+  // file:// / 离线单文件：无法 fetch 自身时，序列化当前页面（singlefile 内联 bundle 完整）
+  try {
+    if (typeof document !== 'undefined' && document.documentElement) {
+      let t = document.documentElement.outerHTML || '';
+      if (t && !/^<!DOCTYPE/i.test(t)) t = '<!DOCTYPE html>\n' + t;
+      if (t.length > 5000 && /<html/i.test(t) && /<script/i.test(t)) return t;
+    }
+  } catch (e) { lastErr = e; }
+  throw new Error('无法读取工具自身 HTML（请用 http/https 打开，或打开完整单文件 HTML）。' + (lastErr ? ' (' + lastErr.message + ')' : ''));
 }
 
 export async function exportH5PlayableFromPage({ toolId, S, status, toast, ...opts } = {}) {
@@ -692,10 +703,12 @@ export async function exportH5PlayableFromPage({ toolId, S, status, toast, ...op
       h5MaxMb: (S && S.h5MaxMb) || 5,
     },
   });
-  const url = URL.createObjectURL(r.blob);
-  const a = document.createElement('a'); a.href = url; a.download = r.name; document.body.appendChild(a); a.click(); a.remove();
+  if (!opts.nodownload) {
+    const url = URL.createObjectURL(r.blob);
+    const a = document.createElement('a'); a.href = url; a.download = r.name; document.body.appendChild(a); a.click(); a.remove();
+  }
   const msg = 'H5 试玩已导出：' + r.name + '（' + (r.totalBytes / 1048576).toFixed(2) + ' MB，渠道 ' + r.formats.join('+') + '）' + (r.warn ? ' ⚠ ' + r.warn : '');
-  say(msg);
+  if (!opts.nodownload) say(msg);
   if (typeof window !== 'undefined') window.__lastH5Export = r;
   return r;
 }

@@ -4,7 +4,7 @@ const { b, p, errs } = await open('?det&seed=3');
 const nLv = await p.evaluate(() => (window.__levels || __game.levels || []).length || 20);
 // 1. 颈部：所有主题、所有关卡，每个夹扣颈部可见长度 > 0（且 ≥ CLIP_NECK_LEN-0.01）
 for (const t of ['default', 'jade', 'wood', 'candy']) {
-  const r = await p.evaluate(([t, n]) => { __setSettings({ theme: t }); const lvls = [...Array(n).keys(), 'L20']; let bad = [], cnt = 0, min = 1e9; for (const i of lvls) { if (i === 'L20') __game.loadLevel(19); else __game.loadLevel(i); __step(2); for (const c of __clipNecks()) { cnt++; min = Math.min(min, c.neck); if (!(c.neck >= 9.99) || !(c.centerErr >= 0 && c.centerErr <= 1)) bad.push(`L${i + 1}#${c.id}:neck${c.neck.toFixed(1)}/err${c.centerErr.toFixed(2)}`); } } return { bad, cnt, min }; }, [t, nLv]);
+  const r = await p.evaluate(([t, n]) => { __setSettings({ theme: t }); const lvls = [...Array(n).keys(), 'L20']; let bad = [], cnt = 0, min = 1e9; for (const i of lvls) { if (i === 'L20') __game.loadLevel(5); else __game.loadLevel(i); __step(2); for (const c of __clipNecks()) { cnt++; min = Math.min(min, c.neck); if (!(c.neck >= 9.99) || !(c.centerErr >= 0 && c.centerErr <= 1)) bad.push(`L${i + 1}#${c.id}:neck${c.neck.toFixed(1)}/err${c.centerErr.toFixed(2)}`); } } return { bad, cnt, min }; }, [t, nLv]);
   ok(r.cnt > 0 && r.bad.length === 0 && r.min >= 9.99, `${t}: ${r.cnt} 个夹扣夹块居中于子环中心线(±1px)且颈部≥10 (min ${r.min.toFixed(1)}) ${r.bad.slice(0, 5).join(' ')}`);
 }
 // 2. 玉石：卡片、切换、持久化、精灵前缀

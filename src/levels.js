@@ -17,7 +17,7 @@ export const LEVELS = [
       { id: 'y', color: 'yellow', x: 340, y: 577, R: 96, gap: [284, 51], parent: 'a', balls: 6 },
       { id: 'gr', color: 'green', x: 553, y: 498, R: 96, gap: [299, 58], parent: 'y', balls: 6 },
       { id: 'r', color: 'red', x: 484, y: 746, R: 96, gap: [292, 58], parent: 'y', balls: 6 },
-    ], boxes: [['green', 'yellow'], ['green', 'yellow'], ['red'], ['red']], plan: [['r', 'detach'], ['gr', 'detach', 1, 1.0], ['y', 'spill', 0.12, 2.3]] }, // 视频：黄环慢转，黄球逐颗滴落
+    ], boxes: [['green', 'yellow'], ['green', 'yellow'], ['red'], ['red']], plan: [['r', 'detach'], ['gr', 'detach', 1, 1.0], ['y', 'spill', 0.12, 2.3]] }, // 视频：黄环慢转倒球(spd=0.12)；autoUnlockFirst 转 detach 时 app 会复位 spd=1
   { ballR: 17.5, rings: [
       { id: 'p', color: 'lilac', x: 433, y: 494, R: 97, anchor: true, closed: true },
       { id: 'r', color: 'red', x: 203, y: 499, R: 93, gap: [274, 54], parent: 'p', hinge: true, balls: 6 },
@@ -35,13 +35,13 @@ export const LEVELS = [
 // 可选美术字段（每个环）：sprite（资源 key，默认 ring_<color>）、pivot:[0~1,0~1] 环心在图中位置、spriteRot（图中缺口方向偏移°，
 // 约定图中缺口朝右=0）、spriteScale、z（绘制层级，越大越上）；夹子：clampSprite、clampPivot、clampRot、clampScale。
 
-// —— 第 20 关（最难）：风车式 3×3 环阵，不进 1–5 关循环；?level=20 或 设置“起始关卡”=20 直达 ——
+// —— 第 6 关（最难，phase44 由原第 20 关改为第 6 关）：风车式 3×3 环阵，接在 1–5 关之后；?level=6 或 设置“起始关卡”=6 直达 ——
 // 中心灰色闭环为固定锚；上/左/右/下 4 个“中环”夹在锚上，每个中环再夹住一个角上的“叶环”（风车方向）：
 //   nw→n, ne→e, sw→w, se→s。中环同时被锚夹住 + 夹着叶环 = 2 个夹扣 → 锁死不能转，必须先解掉它的叶环。
 // 传送带只有 6 格：同时有 6 颗“没有开着的盒子可去”的球在带上就彻底堵死。盒子栈顺序（tools/l20_solver.py 求得）
 // 使 2520 种合法拆环顺序里只有 1 种不堵：se → nw → n → sw → w → s → ne → e。
 export const SPECIAL_LEVELS = {
-  20: { label: 20, ballR: 17.5, beltSlots: 6, rings: [
+  6: { label: 6, ballR: 17.5, rings: [
       { id: 'a', color: 'grey', x: 432, y: 380, R: 95, anchor: true, closed: true },
       { id: 'w', color: 'red', x: 212, y: 380, R: 95, gap: [290, 56], parent: 'a', balls: 6 },
       { id: 'e', color: 'purple', x: 652, y: 380, R: 95, gap: [250, 56], parent: 'a', balls: 6 },
@@ -59,7 +59,7 @@ export const SPECIAL_LEVELS = {
 // 需要的圆心距 D = 父R + 父管半宽(取各主题最大 0.205R) + CLIP_NECK_LEN + 夹块半高(29·子R/151·clampScale) + 子R。
 // 不够就把子环（连同它的整棵子树）沿 父→子 方向推远；方向不变，所以缺口安全区角度不变。
 export const CLIP_NECK_LEN = 10;
-export const TUBE_HALF_MAX = R => R * 0.205;
+export const TUBE_HALF_MAX = R => R * 0.27; // phase26：木质参考图管更粗（≈0.25R），布局按此预留
 export const clipBlockHalf = r => 29 * (r.R / 151) * (r.clampScale || 1);
 export const jointNeed = (p, r) => p.R + TUBE_HALF_MAX(p.R) + CLIP_NECK_LEN + clipBlockHalf(r) + r.R;
 export function spaceJoints(lv) {

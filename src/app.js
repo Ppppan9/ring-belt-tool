@@ -4,12 +4,13 @@ import { makeBackground, designLayout } from './render.js';
 import { Sfx } from './sfx.js';
 import { DEFAULT_HAND } from './default_hand.js';
 import { assetsReady } from './assets.js';
-import { setTheme, spritePrefix, cpuBench, runJob, THEMES, themeAssetsReady, setBeltLook, beltImageReady, beltRect, beltLook } from './themes.js';
+import { setTheme, spritePrefix, cpuBench, runJob, THEMES, theme, themeAssetsReady, otherThemeUrls, setBeltLook, beltImageReady, beltRect, beltLook, parseExportThemes, remapAssetKey } from './themes.js';
 import { ADV_GROUP } from './settings.js';
-import { enhanceSections, makeSwitch, themePicker, panelEntrance, bindPress, themeCrossfade, levelFade, themeProgress } from './panelfx.js';
+import { enhanceSections, makeSwitch, themePicker, themeMultiPicker, panelEntrance, bindPress, themeCrossfade, levelFade, themeProgress } from './panelfx.js';
 import { clipGeom } from './items.js';
-import { frameItems, drawItems, clearSprites, allSprites, resetSpriteArchive, VIEW, useSpriteStore, cancelSpriteJobs, beginBudget, endBudget, BUDGET } from './items.js';
+import { frameItems, drawItems, clearSprites, allSprites, resetSpriteArchive, VIEW, useSpriteStore, cancelSpriteJobs, beginBudget, endBudget, BUDGET, ensureRecSprites } from './items.js';
 import { createAERecorder } from './ae/recorder.js';
+import { makeZip } from './ae/zip.js';
 import { export3D } from './export3d/export3d.js';
 import { applyPlayableMode, isPlayableNoHand, exportH5PlayableFromPage, bindEditorDevicePreview, markH5DeviceCustomIfSizeEdited, applyH5DevicePresetToSettings } from './h5/index.js';
 export const APP_VERSION = '2.0.0';
@@ -17,7 +18,7 @@ const $ = id => document.getElementById(id);
 let S = loadSettings();
 const Q = new URLSearchParams(location.search), DET = Q.has('det');
 const cv = $('stage'), g = cv.getContext('2d');
-const sfx = new Sfx(() => S);
+const sfx = new Sfx(() => S); import * as SFXAPI from "./audio.js"; window.__sfxApi = SFXAPI; /* phase41：测试用 */
 const game = new Game(S, sfx);
 sfx.clock = () => game.time; // 音效节流按游戏时间（确定性）
 let bg = null, handImg = null;
@@ -26,8 +27,9 @@ let bg = null, handImg = null;
 const bgCache = new Map(); let bgJob = null;
 const bgKey = () => S.theme + '|' + JSON.stringify(beltLook());
 const spriteSig = () => JSON.stringify([Object.keys(S).filter(k => k.startsWith('col')).sort().map(k => S[k]), S.ringThick, S.boxCapacity]);
-function setBg(c) { bg = c; bgJob = null; const k = bgKey(); bgCache.delete(k); bgCache.set(k, c); while (bgCache.size > 6) bgCache.delete(bgCache.keys().next().value); return c; }
+function setBg(c) { bg = c; bgJob = null; const k = bgKey(); bgCache.delete(k); if (!c.__miss) bgCache.set(k, c); while (bgCache.size > 6) bgCache.delete(bgCache.keys().next().value); return c; }
 const syncBg = () => setBg(makeBackground(864, 1920));
+window.addEventListener('rb-tex', () => { if (bg && bg.__miss) { syncBg(); clearSprites(); } });
 const ASYNC = !DET && !window.__PLAYABLE__;
 const detectSlow = () => { BUDGET.slow = Q.get('quality') === 'low' || (Q.get('quality') !== 'high' && cpuBench() > 12); }; detectSlow();
 function beltLate() { if (S.beltFaceImage && !beltLook().imgLoaded) beltImageReady().then(() => { syncBg(); clearSprites(); }); }
@@ -62,12 +64,14 @@ function planNext() {
   const lv = game.lv, sp = S.autoSpeed; const mv = () => rnd(S.moveMin, S.moveMax) / 1000 / sp, dl = () => (rnd(S.delayMin, S.delayMax) + (Math.random() < S.thinkChance ? Math.random() * S.thinkMax : 0)) / 1000 / sp;
   if (game.state === 'lc') { if (game.isEnded() && !S.loopLevels) return null; return [{ k: 'wait', c: () => game.lcT > 1.25, max: 5 }, { k: 'tap' }]; } /* 无结算页：自动通关停留片刻后自行续关 */
   if (game.state !== 'play') return [{ k: 'pause', d: 0.1 }];
-  if (auto.lvKey !== lv) { auto.lvKey = lv; auto.step = 0; auto.tries = 0; } const plan = lv.plan || []; while (auto.step < plan.length) { const [id, mode] = plan[auto.step]; const r = game.rings.find(r => r.id === id); if (r && r.alive) break; auto.step++; }
+  if (auto.lvKey !== lv) { auto.lvKey = lv; auto.step = 0; auto.tries = 0; } const plan = lv.plan || []; while (auto.step < plan.length) { const [id, mode] = plan[auto.step]; const r = game.rings.find(r => r.id === id); if (r && r.alive) break; auto.step++; auto.tries = 0; } /* phase47：环已脱开前进到下一步时重置尝试次数（否则耐心等待/停顿只在第 1 次生效，被跳过） */
   if (auto.step >= plan.length) return [{ k: 'pause', d: 0.2 }];
-  const [id, mode, spd = 1, pre = 0, settle = false] = plan[auto.step]; if (mode === 'spill' || (auto.tries = (auto.tries || 0) + 1) > 3) { auto.step++; auto.tries = 0; } const r = game.rings.find(r => r.id === id);
+  let [id, mode, spd = 1, pre = 0, settle = false] = plan[auto.step]; if (S.autoUnlockFirst !== false) { if (mode === 'spill') { mode = 'detach'; spd = 1; } settle = false; pre = 0; } /* phase45：自动通关优先解环——不先倒球、不等球落定/传送带，直接转到缺口脱扣；phase48：spill→detach 时复位 spd（L3 黄环 0.12 是慢倒球用的，解环不该慢转） */ if (mode === 'spill' || (auto.tries = (auto.tries || 0) + 1) > 3) { auto.step++; auto.tries = 0; } const r = game.rings.find(r => r.id === id);
   const gp = () => game.grabPoint(r); const j = S.jitter;
   const loose = () => game.balls.some(b => b.state === 'free' && !game.rings.some(q => q.alive && Math.hypot(b.x - q.c[0], b.y - q.c[1]) < q.R));
-  return [...(settle && auto.tries <= 1 ? [{ k: 'wait', c: () => !loose(), max: 10 }] : []), ...(pre && auto.tries <= 1 ? [{ k: 'pause', d: pre / sp }] : []), { k: 'moveTo', f: gp, j, d: mv() }, { k: 'down', r }, { k: 'drag', r, mode, spd }, { k: 'wait', c: () => !r.alive || (mode === 'spill' && game.ringBalls(r) === 0), max: mode === 'spill' ? 6 / Math.min(1, spd) : 1.5 }, { k: 'up' }, { k: 'pause', d: dl() }];
+  const beltBusy = () => { if (game.drops.length || game.flyBricks && game.flyBricks.length || game.cols.some(c => c.completeT != null || c.shift > 0)) return true; if (game.balls.some(b => b.state === 'free' && !game.rings.some(q => q.alive && Math.hypot(b.x - q.c[0], b.y - q.c[1]) < q.R))) return true; const open = new Set(game.cols.map(c => c.stack[0]).filter(t => t && t.n + t.pend < S.boxCapacity).map(t => t.color)); return game.belt.slots.some(b => b && open.has(b.color)); }; /* phase46：耐心版——等空中球落定、带上能入盒的球全部入盒（剩下的只是暂无可去盒子的球） */
+  const patient = S.autoPatient && auto.tries <= 1 ? [{ k: 'wait', patient: id, c: () => { const busy = beltBusy(); if (busy) auto.calm = 0; return (!busy && (auto.calm = (auto.calm || 0) + 1) > 20) || game.state !== 'play'; }, max: 60 }] : []; /* 需连续稳定 20 帧（防止球刚落地的瞬间误判） */
+  return [...patient, ...(settle && auto.tries <= 1 ? [{ k: 'wait', c: () => !loose(), max: 10 }] : []), ...(pre && auto.tries <= 1 ? [{ k: 'pause', d: pre / sp }] : []), { k: 'moveTo', f: gp, j, d: mv() }, { k: 'down', r }, { k: 'drag', r, mode, spd }, { k: 'wait', c: () => !r.alive || (mode === 'spill' && game.ringBalls(r) === 0), max: mode === 'spill' ? 6 / Math.min(1, spd) : 1.5 }, { k: 'up' }, { k: 'pause', d: dl() }];
 }
 function autoUpdate(dt) {
   if (!auto) return; if (auto.wait > 0) { auto.wait -= dt; return; }
@@ -80,7 +84,7 @@ function autoUpdate(dt) {
   else if (c.k === 'up') { finger.down = false; game.pointerUp(); auto.cur = null; }
   else if (c.k === 'tap') { if (auto.t < 0.09) finger.down = true; else { finger.down = false; game.continueNext(); auto.cur = null; } }
   else if (c.k === 'drag') { const r = c.r; if (!r.alive || !game.drag) { auto.cur = null; return; } const w = S.dragSpeed * Math.PI / 180 * S.autoSpeed * (c.spd || 1) * dt; const rem = c.total - c.done; const st = Math.sign(rem) * Math.min(Math.abs(rem), w); c.done += st; const a = c.lastA + st; c.lastA = a; const rr = Math.hypot(finger.x - r.c[0], finger.y - r.c[1]); finger.x = r.c[0] + rr * Math.cos(a); finger.y = r.c[1] + rr * Math.sin(a); game.pointerMove(finger.x, finger.y); if (Math.abs(rem) < 1e-3) auto.cur = null; }
-  else if (c.k === 'wait') { if (c.c() || auto.t > c.max) auto.cur = null; }
+  else if (c.k === 'wait') { if (c.patient && !c.t0) { c.t0 = game.time; c.b0 = game.belt.slots.filter(Boolean).length; } if (c.c() || auto.t > c.max) { if (c.patient) (window.__autoLog = window.__autoLog || []).push({ next: c.patient, waited: +(game.time - c.t0).toFixed(2), beltBefore: c.b0, beltAfter: game.belt.slots.filter(Boolean).length }); auto.cur = null; } }
 }
 function finishAuto() { const wasRec = !!rec; autoStop(); if (wasRec && S.autoStop) setTimeout(() => stopRec(), S.tailSec * 1000); }
 
@@ -99,12 +103,61 @@ const ae = createAERecorder({ env: () => ({ S, items: curItems, view: VIEW, spri
 let curItems = [], aeLast = null;
 function aeStart() { resetSpriteArchive(); ae.start(); setAeBtn(); status('AE 记录中…'); }
 function aeStop() { const r = ae.stop(); if (r) aeLast = r; sfx.hook = null; setAeBtn(); status(r ? `AE 记录完成：${r.frames} 帧，${r.tracks.size} 个元素` : ''); return r; }
-async function aeExport(r = aeLast, So) { if (ae.rec) aeStop(), r = aeLast; if (!r) { toast('没有 AE 记录：请先点“● 开始记录”或开启录制同步'); return null; } status('正在打包 AE 工程…'); const out = await ae.exportZip(r, So); download(out.blob, out.name); status(`AE 工程已导出：${out.name}（${out.stats.layers} 图层 / ${out.stats.keys} 关键帧）`); window.__lastAE = out; return out; }
+function cloneRecMapped(rec, tid) {
+  const from = (rec.S && rec.S.theme) || 'default';
+  const tracks = new Map();
+  for (const tr of rec.tracks.values()) {
+    const asset = remapAssetKey(tr.asset, from, tid);
+    tracks.set(tr.id + '|' + asset, { ...tr, asset });
+  }
+  return { ...rec, tracks, S: { ...rec.S, theme: tid } };
+}
+async function prepareExportTheme(tid) {
+  setTheme(tid); setBeltLook(S); await themeAssetsReady(); await beltImageReady();
+  const k = bgKey(); if (bgCache.has(k)) bg = bgCache.get(k); else syncBg();
+}
+async function restoreLiveTheme(live) {
+  S.theme = live; setTheme(live); setBeltLook(S); await themeAssetsReady();
+  const k = bgKey(); if (bgCache.has(k)) bg = bgCache.get(k); else syncBg();
+}
+async function zipMany(outs, kind) {
+  if (outs.length === 1) { download(outs[0].blob, outs[0].name); return outs[0]; }
+  const files = [];
+  for (const o of outs) files.push({ name: `${o.theme}/${o.name}`, data: new Uint8Array(await o.blob.arrayBuffer()) });
+  const blob = makeZip(files), name = `ring-belt_${kind}_themes_${stamp()}.zip`;
+  download(blob, name); return { blob, name, themes: outs.map(o => o.theme), parts: outs };
+}
+async function aeExport(r = aeLast, So) {
+  if (ae.rec) aeStop(), r = aeLast; if (!r) { toast('没有 AE 记录：请先点“● 开始记录”或开启录制同步'); return null; }
+  const themes = parseExportThemes(S.exportThemes), live = S.theme, outs = [];
+  try {
+    for (const tid of themes) {
+      status(`正在打包 AE（${(THEMES[tid] || {}).name || tid}）…`);
+      S.theme = tid; await prepareExportTheme(tid);
+      const rec2 = cloneRecMapped(r, tid); ensureRecSprites(rec2, game, { ...S, theme: tid }, bg);
+      const out = await ae.exportZip(rec2, So); out.name = out.name.replace('_ae_export_', `_ae_${tid}_`); out.theme = tid; outs.push(out);
+    }
+    const pack = await zipMany(outs, 'ae');
+    const names = themes.map(t => (THEMES[t] || {}).name || t).join('、');
+    status(`AE 已导出：${names}`); toast(`AE 已导出主题：${names}`); window.__lastAE = pack; return pack;
+  } finally { await restoreLiveTheme(live); }
+}
 async function do3D() {
   if (ae.rec) aeStop(); if (!aeLast) { toast('没有记录：请先自动通关（或录制/AE 记录）'); return null; }
-  status('正在生成 3D 动画…'); const aeR = await ae.exportZip(aeLast, { aeSampling: 'bake', aeNames: 'en', aeSize: 'canvas' }); const AS = allSprites();
-  const r = await export3D({ S, aeResult: aeR, api: { colorHex: c => game.color(c), spriteK: id => AS[id] ? AS[id].c.width / AS[id].w : 1 } });
-  download(r.blob, r.name); status(`3D 已导出：${r.name}（圆环 ${r.stats.rings} / 球 ${r.stats.balls} / 平面 ${r.stats.quads}）`); window.__last3D = r; return r;
+  const themes = parseExportThemes(S.exportThemes), live = S.theme, outs = [];
+  try {
+    for (const tid of themes) {
+      status(`正在生成 3D（${(THEMES[tid] || {}).name || tid}）…`);
+      S.theme = tid; await prepareExportTheme(tid);
+      const rec2 = cloneRecMapped(aeLast, tid); ensureRecSprites(rec2, game, { ...S, theme: tid }, bg);
+      const aeR = await ae.exportZip(rec2, { aeSampling: 'bake', aeNames: 'en', aeSize: 'canvas' }); const AS = allSprites();
+      const r = await export3D({ S: { ...S, theme: tid }, aeResult: aeR, api: { colorHex: c => game.color(c), spriteK: id => AS[id] ? AS[id].c.width / AS[id].w : 1 } });
+      r.name = r.name.replace('_3d_export_', `_3d_${tid}_`); r.theme = tid; outs.push(r);
+    }
+    const pack = await zipMany(outs, '3d');
+    const names = themes.map(t => (THEMES[t] || {}).name || t).join('、');
+    status(`3D 已导出：${names}`); toast(`3D 已导出主题：${names}`); window.__last3D = pack; return pack;
+  } finally { await restoreLiveTheme(live); }
 }
 function setAeBtn() { const b = ui.aeToggle; if (b) b.textContent = ae.rec ? '■ 停止记录' : '● 开始记录'; }
 function pickMime() { const c = S.recFormat === 'webm' ? ['video/webm;codecs=vp9,opus', 'video/webm'] : S.recFormat === 'mp4' ? ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4'] : ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm']; return c.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || ''; }
@@ -114,7 +167,7 @@ function stamp() { const d = new Date(), p = n => String(n).padStart(2, '0'); re
 function download(blob, name) { window.__downloads = (window.__downloads || []).concat(name); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
 
 // ---------------- 游戏控制 ----------------
-function restart() { game.loadLevel((Q.has('level') ? +Q.get('level') : S.startLevel) - 1); } /* ?level=20 直达第 20 关 */
+function restart() { game.loadLevel((Q.has('level') ? +Q.get('level') : S.startLevel) - 1); } /* ?level=6 直达第 6 关 */
 function newRound() { game.seed = (Math.random() * 1e9) | 0; game.loadLevel(game.levelIdx, { shuffle: true }); }
 
 // ---------------- UI ----------------
@@ -125,7 +178,7 @@ function buildUI() {
   ui.recBtn = $('btnRec'); ui.recBtn.onclick = () => rec ? stopRec() : startRec();
   $('btnRestart').onclick = () => { autoStop(); restart(); };
   $('btnNew').onclick = () => { autoStop(); newRound(); };
-  $('btnNext').onclick = () => { autoStop(); levelFade(cv, DET); game.loadLevel((game.levelIdx + 1) % game.levels().length); };
+  $('btnNext').onclick = () => { autoStop(); levelFade(cv, DET); game.loadLevel((game.levelIdx + 1) % game.levelCount()); };
   $('btnShot').onclick = () => cv.toBlob(b => download(b, `${TOOL_ID}_${stamp()}.png`));
   $('btnExport').onclick = () => download(new Blob([exportSettingsJSON(S)], { type: 'application/json' }), `${TOOL_ID}_settings_${stamp()}.json`);
   const imp = $('importFile'); $('btnImport').onclick = () => imp.click();
@@ -161,6 +214,7 @@ function buildPanel() {
       if (t !== 'button' && t !== 'range') inp.dataset.key = k; if (ex.adv) row.dataset.adv = '1';
       if (t === 'bool') { row.appendChild(makeSwitch(inp)); host.appendChild(row); continue; }
       if (k === 'theme') { const tp = themePicker(inp, ex.options); tp.prepend(sp); sp.className = 'tp-l'; host.appendChild(tp); continue; }
+      if (k === 'exportThemes' || ex.multiTheme) { const tp = themeMultiPicker(inp, ex.options || []); tp.prepend(sp); sp.className = 'tp-l'; host.appendChild(tp); continue; }
       row.classList.add('t-' + t); row.appendChild(inp); host.appendChild(row);
     }
     P.appendChild(d);
@@ -172,7 +226,20 @@ function buildPanel() {
 const RELOAD_KEYS = new Set(['levelsJson', 'beltSlots', 'ballRadius', 'ringThick', 'colorMap', 'useArtGap', 'startLevel', 'boxCapacity']);
 function set(k, v) { S[k] = v; if (k === 'h5Device') applyH5DevicePresetToSettings(S); if (k === 'h5DeviceW' || k === 'h5DeviceH') markH5DeviceCustomIfSizeEdited(S); onSettings(k.startsWith('h5Device'), k); }
 function onSettings(rebuild, k) { game.S = S; saveSettings(S); if (rebuild) buildPanel(); if (rebuild || k === 'canvasW' || k === 'canvasH') applyCanvas(); else if (BELT_KEYS.has(k)) { clearTimeout(beltT); beltT = setTimeout(applyBelt, k === 'beltFaceImage' ? 0 : 40); } else if (k === 'theme') { const fin = themeCrossfade(cv, DET || !!auto || !!rec); applyTheme(ASYNC); fin(); } if (rebuild || (k && (k.startsWith('col') || k === 'ringThick' || k === 'boxCapacity'))) { game.spriteCache = {}; clearSprites(); } if ((rebuild && k !== 'h5Device' && !(k || '').startsWith('h5Device')) || RELOAD_KEYS.has(k)) game.loadLevel(rebuild ? S.startLevel - 1 : game.levelIdx); if (rebuild || k === 'handImage' || (k || '').startsWith('hand')) loadHand(); if (!S.manualHand && !auto) finger.visible = false; if (window.__h5EditorDeviceFit) window.__h5EditorDeviceFit(); updateCursor(); }
-async function exportH5() { return exportH5PlayableFromPage({ toolId: TOOL_ID, S: { ...S, app: TOOL_ID }, status, toast, stripDataUrls: [DEFAULT_HAND] }); }
+async function exportH5() {
+  const themes = parseExportThemes(S.exportThemes), live = S.theme, outs = [];
+  try {
+    for (const tid of themes) {
+      status(`正在打包 H5（${(THEMES[tid] || {}).name || tid}）…`);
+      const r = await exportH5PlayableFromPage({ toolId: TOOL_ID, S: { ...S, theme: tid, app: TOOL_ID }, status: () => {}, toast: () => {}, stripDataUrls: [DEFAULT_HAND, ...otherThemeUrls(tid)], nodownload: true });
+      r.name = r.name.replace('_h5_playable_', `_h5_${tid}_`); r.theme = tid; outs.push(r);
+    }
+    const pack = await zipMany(outs, 'h5');
+    const names = themes.map(t => (THEMES[t] || {}).name || t).join('、');
+    const mb = outs.reduce((s, o) => s + (o.totalBytes || 0), 0) / 1048576;
+    status(`H5 已导出：${names}（${mb.toFixed(2)} MB）`); toast(`H5 已导出主题：${names}`); window.__lastH5Export = pack; return pack;
+  } finally { S.theme = live; }
+}
 
 // ---------------- 主循环 ----------------
 let lastHud = -1;
@@ -196,10 +263,12 @@ window.__auto = on => on ? autoStart() : autoStop(); window.__autoState = () => 
 window.__setSettings = o => { Object.assign(S, o); onSettings(true); };
 window.__migrate = migrate;
 window.__clipNecks = () => game.rings.filter(r => r.p && r.clampLocal).map(r => ({ id: r.id, ...clipGeom(r), centerErr: r._clipC ? Math.abs(Math.hypot(r._clipC[0] - r.c[0], r._clipC[1] - r.c[1]) - r.R) : -1 }));
+import { BOARD_IN, ringsBBox } from './game.js'; window.__boardIn = () => ({ B: BOARD_IN, b: ringsBBox(__game.rings.filter(r => r.alive), r => [r.c[0], r.c[1], r.R]) });
 window.__bg = () => bg; window.__beltRect = beltRect;
 // 带面平均色（测试/截图用）：取带面上半 60%×25% 区域（避开中间金导轨）
 window.__beltAvg = (c = bg) => { const R = beltRect(); if (!R || !c) return null; const sx = c.width / 864, x = (R.x + R.w * 0.2) * sx, y = (R.y + R.h * 0.1) * sx, d = c.getContext('2d').getImageData(x | 0, y | 0, (R.w * 0.6 * sx) | 0, (R.h * 0.25 * sx) | 0).data; const s = [0, 0, 0]; for (let i = 0; i < d.length; i += 4) { s[0] += d[i]; s[1] += d[i + 1]; s[2] += d[i + 2]; } const n = d.length / 4; return s.map(v => Math.round(v / n)); };
 window.__spriteKeys = () => Object.keys(allSprites());
+window.__theme = theme; window.__setTheme = setTheme; window.__THEMES = THEMES; window.__parseExportThemes = parseExportThemes;
 window.__themeBusy = themeBusy; window.__jobLog = () => BUDGET.log || []; window.__themeJob = () => ({ busy: themeBusy(), bg: !!bgJob, pending: BUDGET.pending, lqPending: BUDGET.lqPending, made: BUDGET.made, slow: BUDGET.slow, bgCached: bgCache.size, progress: prog ? { visible: prog.visible, text: prog.text } : null });
 window.__aeStart = aeStart; window.__aeStop = aeStop; window.__aeExport = aeExport; window.__export3d = do3D; window.__exportH5 = exportH5; window.__startRec = startRec; window.__stopRec = stopRec;
 window.__app = { TOOL_ID, SETTINGS_VERSION, APP_VERSION };

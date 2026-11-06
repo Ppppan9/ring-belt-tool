@@ -3,7 +3,7 @@ import { open, ok, done } from './_page.mjs'; import fs from 'fs';
 const { b, p, errs } = await open('?det&seed=3', undefined, process.env.FILE);
 const shot = async (box, f) => { const r = await p.evaluate(() => { const c = document.querySelector('canvas'), q = c.getBoundingClientRect(); return { x: q.x, y: q.y, k: q.width / 864 }; });
   return p.screenshot({ path: f, clip: { x: r.x + box[0] * r.k, y: r.y + box[1] * r.k, width: box[2] * r.k, height: box[3] * r.k } }); };
-for (const theme of ['default', 'jade']) for (const lv of [1, 20]) {
+for (const theme of ['default', 'jade']) for (const lv of [1, 6]) {
   await p.evaluate(t => document.querySelector(`.theme-card[data-theme="${t}"]`).click(), theme);
   await p.evaluate(l => { __setSettings({ startLevel: l, showHint: false }); __game.loadLevel(l - 1); __game.state = 'play'; }, lv);
   for (let i = 0; i < 400 && await p.evaluate(() => __themeBusy && __themeBusy()); i++) await p.evaluate(() => __step(50));
@@ -20,7 +20,7 @@ for (const theme of ['default', 'jade']) for (const lv of [1, 20]) {
 // 银色夹扣（子环已脱落后留在父环缺口端的夹扣）：真实鼠标拖动父环，夹扣位置/朝向必须固定
 for (const theme of ['jade', 'default']) {
   await p.evaluate(t => document.querySelector(`.theme-card[data-theme="${t}"]`).click(), theme);
-  await p.evaluate(() => { __setSettings({ showHint: false, handImage: '' }); __game.loadLevel(19); __auto(false); const G = __game; for (const id of ['br', 'bl', 'ss']) G.detach(G.rings.find(r => r.id === id)); });
+  await p.evaluate(() => { __setSettings({ showHint: false, handImage: '' }); __game.loadLevel(5); __auto(false); const G = __game; for (const id of ['br', 'bl', 'ss']) G.detach(G.rings.find(r => r.id === id)); });
   for (let i = 0; i < 400 && await p.evaluate(() => __themeBusy()); i++) await p.evaluate(() => __step(50));
   await p.evaluate(() => __step(60));
   const info = await p.evaluate(() => { const G = __game, s = G.rings.find(r => r.id === 's'), ss = G.rings.find(r => r.id === 'ss'), q = document.getElementById('stage').getBoundingClientRect(); return { c: s.c, R: s.R, rot: s.rot, cw: G.clampWorld(ss), alive: s.alive, x: q.x, y: q.y, k: q.width / 864 }; });
@@ -31,11 +31,11 @@ for (const theme of ['jade', 'default']) {
   const a0 = Math.PI, pt = a => scr(info.c[0] + info.R * Math.cos(a), info.c[1] + info.R * Math.sin(a));
   await p.mouse.move(...pt(a0)); await p.mouse.down(); let worst = 0, rotN = [];
   for (let j = 1; j <= 3; j++) { for (let s2 = 0; s2 < 4; s2++) { await p.mouse.move(...pt(a0 + (j - 1 + (s2 + 1) / 4) * 0.2)); await p.evaluate(() => __step(2)); }
-    const st = await p.evaluate(() => { const G = __game, s = G.rings.find(r => r.id === 's'), ss = G.rings.find(r => r.id === 'ss'); return { rot: s.rot, cw: G.clampWorld(ss), alive: s.alive }; });
+    const st = await p.evaluate(() => { const G = __game, s = G.rings.find(r => r.id === 's'), ss = G.rings.find(r => r.id === 'ss'); return { rot: s.rot, cw: G.clampWorld(ss), alive: s.alive, c: s.c.slice() }; });
     const f = `/tmp/clipsilver_${theme}_${j}.png`; await shot(box, f); const pj = await px(); let d = 0; for (let i = 0; i < p0.length; i++) d += Math.abs(p0[i] - pj[i]); d /= p0.length; worst = Math.max(worst, d);
-    rotN.push(+(st.rot - info.rot).toFixed(3)); ok(Math.hypot(st.cw[0] - cw0[0], st.cw[1] - cw0[1]) < 0.01, `${theme} L20 银扣 拖动第${j}段（环转 ${(st.rot - info.rot).toFixed(2)}rad）位置不变 ${f}`); }
+    rotN.push(+(st.rot - info.rot).toFixed(3)); const ang = q => Math.atan2(q[1] - info.c[1], q[0] - info.c[0]); const dA = Math.atan2(Math.sin(ang(st.cw) - ang(cw0) - (st.rot - info.rot)), Math.cos(ang(st.cw) - ang(cw0) - (st.rot - info.rot))); ok(Math.abs(Math.hypot(st.cw[0] - info.c[0], st.cw[1] - info.c[1]) - Math.hypot(cw0[0] - info.c[0], cw0[1] - info.c[1])) < 0.5 && Math.abs(dA) < 0.01, `${theme} L20 银扣 拖动第${j}段（环转 ${(st.rot - info.rot).toFixed(2)}rad）粘在父环上随环转（phase42 用户要求）${f}`); }
   await p.mouse.up();
   ok(Math.abs(rotN[rotN.length - 1]) > 0.2, `${theme} L20 真实拖动确实转动了父环 ${rotN}`);
-  ok(worst < 8, `${theme} L20 银扣中心像素不变（最大平均差 ${worst.toFixed(2)}）`);
+  ok(worst > 8, `${theme} L20 银扣随父环移动（原位置像素平均差 ${worst.toFixed(2)} > 8）`);
 }
 ok(!errs.length, '无页面错误 ' + errs.join('|')); await b.close(); done('clipfixed');

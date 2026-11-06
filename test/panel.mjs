@@ -17,9 +17,35 @@ await p.click(`#panelBody > details:nth-of-type(${idx + 1}) > summary`); await p
 ok(await p.evaluate(i => !document.querySelectorAll('#panelBody > details')[i].open, idx), '再次点击收起');
 ok(await p.evaluate(() => { const l = document.querySelector('#panelBody > details:last-of-type'); return l.id === 'advSettings' && !l.open; }), '#advSettings 仍为最后且默认收起');
 // 主题卡片
-const th = await p.evaluate(async () => { const c = document.querySelector('.theme-card:not(.on)'); c.click(); await new Promise(r => setTimeout(r, 50)); return { want: c.dataset.theme, got: document.querySelector('select[data-key=theme]').value, on: c.classList.contains('on') }; });
+const th = await p.evaluate(async () => { const c = document.querySelector('.theme-picker[role=radiogroup] .theme-card:not(.on)'); c.click(); await new Promise(r => setTimeout(r, 50)); return { want: c.dataset.theme, got: document.querySelector('select[data-key=theme]').value, on: c.classList.contains('on') }; });
 ok(th.want === th.got && th.on, `主题卡片切换到 ${th.got}`);
 ok(errs.length === 0, '无页面错误 ' + errs.join('|'));
+// 导出主题多选
+const ex = await p.evaluate(async () => {
+  const box = document.querySelector('.theme-picker.multi');
+  const inp = document.querySelector('input[data-key=exportThemes]');
+  const cards = [...box.querySelectorAll('.theme-card')];
+  const n0 = cards.filter(c => c.classList.contains('on')).length;
+  // 取消一个（非唯一）
+  const on = cards.find(c => c.classList.contains('on'));
+  on.click(); await new Promise(r => setTimeout(r, 40));
+  const n1 = cards.filter(c => c.classList.contains('on')).length;
+  const v1 = inp.value;
+  // 试图取消最后一个：不应变空
+  const left = cards.filter(c => c.classList.contains('on'));
+  for (const c of left.slice(1)) c.click();
+  await new Promise(r => setTimeout(r, 40));
+  const last = cards.find(c => c.classList.contains('on'));
+  last.click(); await new Promise(r => setTimeout(r, 40));
+  const nLast = cards.filter(c => c.classList.contains('on')).length;
+  // 恢复全选
+  for (const c of cards) if (!c.classList.contains('on')) c.click();
+  await new Promise(r => setTimeout(r, 40));
+  return { has: !!box && !!inp, n0, n1, v1, nLast, all: inp.value, parse: __parseExportThemes(inp.value) };
+});
+ok(ex.has && ex.n0 >= 4 && ex.n1 === ex.n0 - 1, `导出主题多选 UI（${ex.n0}→${ex.n1}）`);
+ok(ex.nLast === 1, '至少保留 1 个导出主题');
+ok(ex.parse.length >= 4 && ex.parse.includes('jade'), 'parseExportThemes 解析全选');
 // 截图：全部展开（含高级）
 await p.evaluate(() => { __setSettings({ theme: 'jade' }); document.querySelectorAll('#panelBody details').forEach(d => d.open = true); });
 await p.waitForTimeout(300);

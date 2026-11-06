@@ -151,5 +151,5 @@ export function drawClampArt(g, game, r) { // 已在夹子位置、局部 -y 指
   if (theme().clip) return theme().clip(g, game, r);
   const pc = r.p.color, A = asset(r.clampSprite || (pc === 'gray' ? 'arc_or_hinge_gray' : 'clip_' + pc)); if (!A) return false;
   const k = (r.R / RING_ART.open.centerR) * (r.clampScale || 1), w = A.naturalWidth * k, h = A.naturalHeight * k, cp = r.clampPivot || (r.clampSprite ? [0.5, 0.5] : RING_ART.clip.pivot);
-  g.rotate((r.clampRot ?? (pc === 'gray' ? 90 : 180)) * Math.PI / 180); g.drawImage(A, -cp[0] * w, -cp[1] * h, w, h); return true;
+  g.rotate((r.clampRot ?? (pc === 'gray' ? 90 : 180)) * Math.PI / 180); const CF = theme().clipFilter; if (CF) { g.save(); g.filter = CF; } g.drawImage(A, -cp[0] * w, -cp[1] * h, w, h); if (CF) g.restore(); return true;
 }

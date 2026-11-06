@@ -1,3 +1,10 @@
 node_modules
 dist
 ref
+compare
+exports
+screenshots
+*.wav
+*.tar.gz
+ring-belt-sfx.zip
+jiehuan_chuansongdai_phase*.html

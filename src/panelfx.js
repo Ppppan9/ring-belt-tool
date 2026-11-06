@@ -74,6 +74,28 @@ export function themePicker(sel, options) {
   const mark = () => box.querySelectorAll('.theme-card').forEach(b => { const on = b.dataset.theme === sel.value; const was = b.classList.contains('on'); b.classList.toggle('on', on); b.setAttribute('aria-checked', on); if (on && !was && box.isConnected) gsap.fromTo(b, { boxShadow: '0 0 0 0 rgba(63,174,116,0.65)' }, { boxShadow: '0 0 0 10px rgba(63,174,116,0)', duration: D(0.6), ease: 'power2.out', clearProps: 'boxShadow' }); });
   mark(); sel.classList.add('sr-hidden'); box.appendChild(sel); return box;
 }
+// 导出主题多选卡片：隐藏原 text input（CSV），卡片点击切换勾选，至少保留 1 个
+export function themeMultiPicker(inp, options) {
+  const box = document.createElement('div'); box.className = 'theme-picker multi'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', '导出主题');
+  const selected = () => String(inp.value || '').split(/[,|;\s]+/).map(s => s.trim()).filter(Boolean);
+  const write = (ids) => { inp.value = ids.join(','); inp.dispatchEvent(new Event('change')); mark(); };
+  for (const [v, l] of options) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'theme-card'; b.dataset.theme = v; b.setAttribute('role', 'checkbox');
+    b.innerHTML = `<span class="sw" style="background:${PREVIEW[v] || '#555'}"></span><span class="tn">${l}</span><span class="tick" aria-hidden="true">✓</span>`;
+    b.onclick = e => {
+      e.preventDefault(); const cur = selected(); const on = cur.includes(v);
+      if (on) { if (cur.length <= 1) return; write(cur.filter(x => x !== v)); }
+      else write([...cur, v]);
+      gsap.fromTo(b, { scale: 0.94 }, { scale: 1, duration: D(0.4), ease: 'back.out(3)' });
+    };
+    const sw = b.querySelector('.sw');
+    b.addEventListener('pointerenter', () => { gsap.to(b, { y: -3, duration: D(0.22), ease: 'power2.out' }); gsap.to(sw, { scale: 1.06, rotate: 2, duration: D(0.3), ease: 'power2.out' }); });
+    b.addEventListener('pointerleave', () => { gsap.to(b, { y: 0, duration: D(0.25), ease: 'power2.out' }); gsap.to(sw, { scale: 1, rotate: 0, duration: D(0.3), ease: 'power2.out' }); });
+    box.appendChild(b);
+  }
+  const mark = () => { const cur = new Set(selected()); box.querySelectorAll('.theme-card').forEach(b => { const on = cur.has(b.dataset.theme); b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); }); };
+  mark(); inp.classList.add('sr-hidden'); box.appendChild(inp); return box;
+}
 // 画布上方的纯 DOM 覆盖层动画（不改游戏画布像素/时序；?det、录制、自动演示时不运行）
 function overlay(cv, make) { const r = cv.getBoundingClientRect(); if (!r.width) return null; const o = make(); Object.assign(o.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', pointerEvents: 'none', zIndex: 5 }); document.body.appendChild(o); return o; }
 // 主题切换交叉淡化：先快照旧画面，切换后淡出

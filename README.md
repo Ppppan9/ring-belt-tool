@@ -1,3 +1,5 @@
+> 当前发布：phase49（多主题导出、file:// H5 导出修复、耐心自动通关、四主题）。在线试玩见 GitHub Pages。
+
 # 圆环传送带 · 核玩工具（ring-belt）
 参考视频 ref/ref.mp4 的可玩复刻。单文件离线：`index.html`（美术已内联）。
 
