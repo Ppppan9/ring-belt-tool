@@ -663,7 +663,8 @@ export async function fetchBaseHtml() {
   } catch { /* ignore */ }
   candidates.push('index.html', './index.html');
   let lastErr;
-  for (const href of candidates) {
+  const isFile = typeof location !== 'undefined' && location.protocol === 'file:'; // file:// 下 fetch 必失败且在控制台报错，直接走 DOM 序列化
+  for (const href of (isFile ? [] : candidates)) {
     try {
       const res = await fetch(href, { cache: 'no-store' });
       if (!res.ok) continue;

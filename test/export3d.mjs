@@ -2,9 +2,9 @@ import { open, ok, done, saveDownload, ROOT } from './_page.mjs'; import fs from
 // 1) 导出：原版主题 L2（原有用例）+ 玉石主题 L1
 async function exportFor(theme, lv, out) {
   const { b, p, errs } = await open(); fs.rmSync(out, { recursive: true, force: true }); fs.mkdirSync(out);
-  await p.evaluate(([th, lv]) => { __setSettings({ loopLevels: false, theme: th }); __game.loadLevel(lv); __aeStart(); }, [theme, lv]); await p.evaluate(() => __auto(true));
+  await p.evaluate(([th, lv]) => { __setSettings({ loopLevels: false, theme: th, exportThemes: th }); __game.loadLevel(lv); __aeStart(); }, [theme, lv]); await p.evaluate(() => __auto(true));
   for (let i = 0; i < 60 && !(await p.evaluate(() => __game.state === 'lc' && __game.lcT > 2)); i++) await p.evaluate(() => __step(50));
-  const z = await saveDownload(p, async () => { __aeStop(); await __export3d(); }, out); ok(/ring-belt_3d_export_/.test(z), `[${theme}] zip ` + z.split('/').pop());
+  const z = await saveDownload(p, async () => { __aeStop(); await __export3d(); }, out); ok(/ring-belt_3d_(default|jade|wood|candy)_/.test(z), `[${theme}] zip ` + z.split('/').pop());
   execSync(`cd ${out} && python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall('x')" "${z}"`);
   ok(errs.length === 0, `[${theme}] no console errors ` + errs.slice(0, 2).join('|')); await b.close(); return z;
 }
@@ -44,6 +44,6 @@ for (const th of ['jade', 'default']) {
   await pg.locator('canvas').screenshot({ path: `${ROOT}/screenshots/three_${th}_L${th === 'jade' ? 1 : 2}.png` }); await pg.close();
 }
 await br.close();
-fs.copyFileSync(z, '/workspace/ring-belt/screenshots/ring_belt_3d_sample.zip');
+{ const SD = new URL('../screenshots/', import.meta.url).pathname; fs.mkdirSync(SD, { recursive: true }); fs.copyFileSync(z, SD + 'ring_belt_3d_sample.zip'); }
 ok(fs.existsSync(`${out}/x/scene.fbx`) || /fbx/i.test(fs.readFileSync(`${out}/x/README_3D.md`, 'utf8')), 'fbx (or documented Blender path)');
 done('test:3d');
