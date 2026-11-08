@@ -16,12 +16,13 @@
     "test:themes": "node test/themes.mjs",
     "test:bg": "node test/bgtheme.mjs",
     "test:open": "node test/_open.mjs index.html && node test/h5size.mjs && node test/fitcheck.mjs",
-    "test:all": "npm run build && npm test && npm run test:themes && npm run test:belt && npm run test:logic && npm run test:panel && npm run test:cursor && npm run test:ae && npm run test:3d && npm run test:h5 && npm run test:themeswitch && npm run test:clipfixed && npm run test:bg && npm run test:open",
+    "test:all": "npm run build && npm test && npm run test:themes && npm run test:belt && npm run test:logic && npm run test:panel && npm run test:cursor && npm run test:ae && npm run test:3d && npm run test:h5 && npm run test:themeswitch && npm run test:clipfixed && npm run test:bg && npm run test:exportThemes && npm run test:exportflow && npm run test:open",
     "test:panel": "node test/panel.mjs",
     "test:exportThemes": "node test/exportThemes.mjs",
     "test:belt": "node test/belt.mjs",
     "test:themeswitch": "node test/themeswitch.mjs",
-    "test:clipfixed": "node test/clipfixed.mjs"
+    "test:clipfixed": "node test/clipfixed.mjs",
+    "test:exportflow": "node test/exportflow.mjs"
   },
   "keywords": [],
   "author": "",

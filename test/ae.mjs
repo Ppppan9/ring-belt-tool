@@ -1,7 +1,7 @@
 import { open, ok, done, runAuto, saveDownload } from './_page.mjs'; import { runMock } from './ae-mock.mjs'; import fs from 'fs'; import { execSync } from 'child_process';
 const { b, p, errs } = await open(); const out = '/tmp/rb_ae'; fs.rmSync(out, { recursive: true, force: true }); fs.mkdirSync(out);
-await p.evaluate(() => { __game.loadLevel(3); __aeStart(); }); ok(await runAuto(p, 120), 'L4–L5 auto to end');
-const z = await saveDownload(p, async () => { __aeStop(); await __aeExport(); }, out); ok(/ring-belt_ae_export_\d+_\d+\.zip$/.test(z), 'zip name ' + z);
+await p.evaluate(() => { __setSettings({ exportThemes: 'default' }); __game.loadLevel(3); __aeStart(); }); ok(await runAuto(p, 120), 'L4–L5 auto to end');
+const z = await saveDownload(p, async () => { __aeStop(); await __aeExport(); }, out); ok(/ring-belt_ae_default_\d+_\d+\.zip$/.test(z), 'zip name ' + z);
 execSync(`cd ${out} && python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall('x')" "${z}"`);
 const TL = JSON.parse(fs.readFileSync(out + '/x/timeline.json', 'utf8'));
 ok(TL.comps.some(c => c.name === '主合成_解环传送带'), 'main comp zh'); ok(TL.meta.tool === 'ring-belt' || JSON.stringify(TL.meta).includes('ring-belt'), 'tool id');
@@ -36,10 +36,10 @@ audit(out + '/x', 'zh'); audit(out + '/y', 'en');
 for (const th of ['default', 'jade', 'wood', 'candy']) {
   await p.evaluate(t => document.querySelector(`.theme-card[data-theme="${t}"]`).click(), th);
   for (let i = 0; i < 900 && await p.evaluate(() => __themeBusy && __themeBusy()); i++) await p.evaluate(() => __step(50));
-  await p.evaluate(() => { __game.loadLevel(0); __aeStart(); }); await runAuto(p, 60);
+  await p.evaluate(t => { __setSettings({ exportThemes: t }); __game.loadLevel(0); __aeStart(); }, th); await runAuto(p, 60);
   const zt = await saveDownload(p, async () => { __aeStop(); await __aeExport(); }, out); const d = `${out}/t_${th}`; fs.rmSync(d, { recursive: true, force: true });
   execSync(`cd ${out} && python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "${zt}" t_${th}`);
   audit(d, th);
 }
-fs.copyFileSync(z, '/workspace/ring-belt/screenshots/ring_belt_ae_sample.zip');
+{ const SD = new URL('../screenshots/', import.meta.url).pathname; fs.mkdirSync(SD, { recursive: true }); fs.copyFileSync(z, SD + 'ring_belt_ae_sample.zip'); }
 ok(errs.length === 0, 'no console errors'); await b.close(); done('test:ae');

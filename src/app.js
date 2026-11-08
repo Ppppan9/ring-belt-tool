@@ -127,12 +127,27 @@ async function zipMany(outs, kind) {
   const blob = makeZip(files), name = `ring-belt_${kind}_themes_${stamp()}.zip`;
   download(blob, name); return { blob, name, themes: outs.map(o => o.theme), parts: outs };
 }
-async function aeExport(r = aeLast, So) {
+// 导出互斥：AE/3D/H5 都会临时切换 S.theme 逐主题打包，并发（双击/录制结束自动导出+手动导出）会互相串主题、重复下载
+let exportBusy = null;
+function exportLock(kind, fn) {
+  return async (...a) => {
+    if (exportBusy) { toast(`正在导出 ${exportBusy}，请等待完成后再导出`); return null; }
+    exportBusy = kind; setExportBtns(true);
+    try { return await fn(...a); }
+    catch (e) { status(`${kind} 导出失败：${e && e.message || e}`); throw e; }
+    finally { exportBusy = null; setExportBtns(false); }
+  };
+}
+function setExportBtns(on) { document.querySelectorAll('#btn_aeExport,#btn_export3d,#btn_exportH5').forEach(b => { b.disabled = on; }); }
+window.__exportBusy = () => exportBusy;
+const aeExport = exportLock('AE', aeExportRaw), do3D = exportLock('3D', do3DRaw), exportH5 = exportLock('H5', exportH5Raw);
+const stepTxt = (i, n) => n > 1 ? `（${i + 1}/${n}）` : '';
+async function aeExportRaw(r = aeLast, So) {
   if (ae.rec) aeStop(), r = aeLast; if (!r) { toast('没有 AE 记录：请先点“● 开始记录”或开启录制同步'); return null; }
   const themes = parseExportThemes(S.exportThemes), live = S.theme, outs = [];
   try {
-    for (const tid of themes) {
-      status(`正在打包 AE（${(THEMES[tid] || {}).name || tid}）…`);
+    for (const [i, tid] of themes.entries()) {
+      status(`正在打包 AE${stepTxt(i, themes.length)}：${(THEMES[tid] || {}).name || tid}…`);
       S.theme = tid; await prepareExportTheme(tid);
       const rec2 = cloneRecMapped(r, tid); ensureRecSprites(rec2, game, { ...S, theme: tid }, bg);
       const out = await ae.exportZip(rec2, So); out.name = out.name.replace('_ae_export_', `_ae_${tid}_`); out.theme = tid; outs.push(out);
@@ -142,12 +157,12 @@ async function aeExport(r = aeLast, So) {
     status(`AE 已导出：${names}`); toast(`AE 已导出主题：${names}`); window.__lastAE = pack; return pack;
   } finally { await restoreLiveTheme(live); }
 }
-async function do3D() {
+async function do3DRaw() {
   if (ae.rec) aeStop(); if (!aeLast) { toast('没有记录：请先自动通关（或录制/AE 记录）'); return null; }
   const themes = parseExportThemes(S.exportThemes), live = S.theme, outs = [];
   try {
-    for (const tid of themes) {
-      status(`正在生成 3D（${(THEMES[tid] || {}).name || tid}）…`);
+    for (const [i, tid] of themes.entries()) {
+      status(`正在生成 3D${stepTxt(i, themes.length)}：${(THEMES[tid] || {}).name || tid}…`);
       S.theme = tid; await prepareExportTheme(tid);
       const rec2 = cloneRecMapped(aeLast, tid); ensureRecSprites(rec2, game, { ...S, theme: tid }, bg);
       const aeR = await ae.exportZip(rec2, { aeSampling: 'bake', aeNames: 'en', aeSize: 'canvas' }); const AS = allSprites();
@@ -202,7 +217,7 @@ function buildPanel() {
     for (const [k, label, t, def, ex = {}] of items) {
       const host = ex.adv ? (advHead || (advHead = (() => { const h = document.createElement('div'); h.className = 'advSub'; h.textContent = gname; advD.appendChild(h); return advD; })())) : d;
       const row = document.createElement('label'); row.className = 'row'; const sp = document.createElement('span'); sp.textContent = label; row.appendChild(sp); let inp;
-      if (t === 'button') { inp = document.createElement('button'); inp.textContent = label; inp.id = 'btn' + k; sp.textContent = ''; inp.onclick = e => { e.preventDefault(); ACTIONS[k] && ACTIONS[k](); }; if (k === '_aeToggle') ui.aeToggle = inp; }
+      if (t === 'button') { inp = document.createElement('button'); inp.textContent = label; inp.id = 'btn' + k; sp.textContent = ''; if (exportBusy && /^_(aeExport|export3d|exportH5)$/.test(k)) inp.disabled = true; inp.onclick = e => { e.preventDefault(); ACTIONS[k] && ACTIONS[k](); }; if (k === '_aeToggle') ui.aeToggle = inp; }
       else if (t === 'bool') { inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!S[k]; inp.onchange = () => set(k, inp.checked); row.classList.add('t-switch'); }
       else if (t === 'select') { inp = document.createElement('select'); ex.options.forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; inp.appendChild(o); }); inp.value = S[k]; inp.onchange = () => set(k, typeof def === 'number' ? +inp.value : inp.value); }
       else if (t === 'num') { inp = document.createElement('input'); inp.type = 'number'; Object.assign(inp, { min: ex.min, max: ex.max, step: ex.step }); inp.value = S[k]; inp.onchange = () => set(k, +inp.value); }
@@ -224,13 +239,13 @@ function buildPanel() {
   setAeBtn();
 }
 const RELOAD_KEYS = new Set(['levelsJson', 'beltSlots', 'ballRadius', 'ringThick', 'colorMap', 'useArtGap', 'startLevel', 'boxCapacity']);
-function set(k, v) { S[k] = v; if (k === 'h5Device') applyH5DevicePresetToSettings(S); if (k === 'h5DeviceW' || k === 'h5DeviceH') markH5DeviceCustomIfSizeEdited(S); onSettings(k.startsWith('h5Device'), k); }
+function set(k, v) { if (exportBusy && (k === 'theme' || k === 'exportThemes')) { toast(`正在导出 ${exportBusy}，完成后再切换主题`); buildPanel(); return; } S[k] = v; if (k === 'h5Device') applyH5DevicePresetToSettings(S); if (k === 'h5DeviceW' || k === 'h5DeviceH') markH5DeviceCustomIfSizeEdited(S); onSettings(k.startsWith('h5Device'), k); }
 function onSettings(rebuild, k) { game.S = S; saveSettings(S); if (rebuild) buildPanel(); if (rebuild || k === 'canvasW' || k === 'canvasH') applyCanvas(); else if (BELT_KEYS.has(k)) { clearTimeout(beltT); beltT = setTimeout(applyBelt, k === 'beltFaceImage' ? 0 : 40); } else if (k === 'theme') { const fin = themeCrossfade(cv, DET || !!auto || !!rec); applyTheme(ASYNC); fin(); } if (rebuild || (k && (k.startsWith('col') || k === 'ringThick' || k === 'boxCapacity'))) { game.spriteCache = {}; clearSprites(); } if ((rebuild && k !== 'h5Device' && !(k || '').startsWith('h5Device')) || RELOAD_KEYS.has(k)) game.loadLevel(rebuild ? S.startLevel - 1 : game.levelIdx); if (rebuild || k === 'handImage' || (k || '').startsWith('hand')) loadHand(); if (!S.manualHand && !auto) finger.visible = false; if (window.__h5EditorDeviceFit) window.__h5EditorDeviceFit(); updateCursor(); }
-async function exportH5() {
+async function exportH5Raw() {
   const themes = parseExportThemes(S.exportThemes), live = S.theme, outs = [];
   try {
-    for (const tid of themes) {
-      status(`正在打包 H5（${(THEMES[tid] || {}).name || tid}）…`);
+    for (const [i, tid] of themes.entries()) {
+      status(`正在打包 H5${stepTxt(i, themes.length)}：${(THEMES[tid] || {}).name || tid}…`);
       const r = await exportH5PlayableFromPage({ toolId: TOOL_ID, S: { ...S, theme: tid, app: TOOL_ID }, status: () => {}, toast: () => {}, stripDataUrls: [DEFAULT_HAND, ...otherThemeUrls(tid)], nodownload: true });
       r.name = r.name.replace('_h5_playable_', `_h5_${tid}_`); r.theme = tid; outs.push(r);
     }

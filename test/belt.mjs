@@ -40,14 +40,14 @@ const avgU = await p.evaluate(() => __beltAvg()); ok(avgU[0] > avgU[1] && avgU[0
 await setRange('beltFaceHue', 120); await p.waitForTimeout(400);
 const avgUH = await p.evaluate(() => __beltAvg()); ok(avgUH[0] < avgU[0] - 30, `上传图同样受色相调整 ${avgUH}`);
 // 4. 持久化 + v7
-const st = await p.evaluate(() => JSON.parse(localStorage.getItem('ring-belt-settings'))); ok(st.version === 8 && st.settings.beltFaceHue === 120 && st.settings.beltFaceImage.startsWith('data:'), '设置 v8 持久化');
+const st = await p.evaluate(() => JSON.parse(localStorage.getItem('ring-belt-settings'))); ok(st.version === 9 && st.settings.beltFaceHue === 120 && st.settings.beltFaceImage.startsWith('data:'), '设置 v9 持久化');
 await p.reload(); await p.waitForFunction(() => window.__ready); await p.waitForTimeout(500);
 ok((await p.evaluate(() => __beltAvg())).join() === avgUH.join(), '刷新后带面一致');
 // 5. 导出一致：AE / 3D 背景贴图 与 页面带面同色；H5 内页面带面同色
 const ref = await p.evaluate(() => __beltAvg()), R = await p.evaluate(() => __beltRect());
 const imgAvg = f => JSON.parse(py(`import sys,json;from PIL import Image;im=Image.open(sys.argv[1]).convert('RGB');s=im.width/864;x,y,w,h=[float(v)*s for v in sys.argv[2:6]];c=im.crop((int(x+w*0.2),int(y+h*0.1),int(x+w*0.2)+int(w*0.6),int(y+h*0.1)+int(h*0.25)));px=list(c.getdata());print(json.dumps([round(sum(p[i] for p in px)/len(px)) for i in range(3)]))`, f, R.x, R.y, R.w, R.h));
 const wallOk = f => +py(`import sys;from PIL import Image;im=Image.open(sys.argv[1]).convert('RGBA');s=im.width/864;p=im.getpixel((int(300*s),int(1165*s)));q=im.getpixel((int(300*s),int(1080*s)));print(1 if p[3]>250 and p[1]>120 and sum(abs(p[i]-q[i]) for i in range(3))>25 else 0)`, f) === 1;
-await p.evaluate(() => { __game.loadLevel(0); __aeStart(); __step(60); });
+await p.evaluate(() => { __setSettings({ exportThemes: __S().theme }); __game.loadLevel(0); __aeStart(); __step(60); }); // 单主题导出：背景断言针对当前主题
 const za = await saveDownload(p, async () => { __aeStop(); await __aeExport(); }, out); unzip(za, out + '/ae');
 const bgA = execSync(`find ${out}/ae -iname '*background*.png' | head -1`).toString().trim(); ok(!!bgA, 'AE 背景贴图 ' + bgA.replace(out, ''));
 if (bgA) { const a = imgAvg(bgA); ok(a.every((v, i) => Math.abs(v - ref[i]) <= 4), `AE 带面一致 ${a} vs ${ref}`); ok(wallOk(bgA), 'AE 背景含玉石阻隔板'); }

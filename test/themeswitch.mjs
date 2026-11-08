@@ -24,13 +24,17 @@ ok(clickMs < 300, `点击玉石立即返回（${clickMs}ms）`);
 await p.waitForTimeout(300);
 const j = await p.evaluate(() => __themeJob());
 ok(j.busy && j.progress && j.progress.visible && /正在生成玉石材质/.test(j.progress.text), `进度提示：${j.progress && j.progress.text}`);
+// 演示状态采样从点击后立即开始（phase49 起按关卡懒生成，玉石首屏约 2s 即完成，旧版在 2.6s 后才采样会落空）
+const samp = new Set(); let busyN = 0;
+const snap = async () => { const q = await p.evaluate(() => ({ b: __themeBusy(), s: JSON.stringify([__game.state, Math.round(__finger.x), Math.round(__finger.y), __autoState() && [__autoState().step, __autoState().t.toFixed(2)], __game.rings.filter(r => r.alive).length]) })); if (q.b) { busyN++; samp.add(q.s); } };
+await snap();
 const lag = []; const raf0 = await p.evaluate(() => __rafN);
-for (let i = 0; i < 10; i++) { const a = Date.now(); await p.evaluate(() => 1); lag.push(Date.now() - a); await p.waitForTimeout(200); }
+for (let i = 0; i < 10; i++) { const a = Date.now(); await p.evaluate(() => 1); lag.push(Date.now() - a); await snap(); await p.waitForTimeout(200); }
 const raf1 = await p.evaluate(() => __rafN);
 ok(Math.max(...lag) < 500, `生成期间主线程响应（Playwright 往返，含 4× 降速 IPC）<500ms（最大 ${Math.max(...lag)}ms）`);
 ok(raf1 - raf0 >= 5, `生成期间游戏循环持续运行（2s 内 ${raf1 - raf0} 帧）`);
 // 自动演示在生成期间持续推进：采样手指位置/步骤，忙碌期间应有变化
-const samp = new Set(); let busyN = 0; for (let k = 0; k < 16; k++) { const q = await p.evaluate(() => ({ b: __themeBusy(), s: JSON.stringify([__game.state, Math.round(__finger.x), Math.round(__finger.y), __autoState() && [__autoState().step, __autoState().t.toFixed(2)], __game.rings.filter(r => r.alive).length]) })); if (q.b) { busyN++; samp.add(q.s); } await p.waitForTimeout(200); }
+for (let k = 0; k < 16; k++) { await snap(); await p.waitForTimeout(200); }
 const gt1 = await p.evaluate(() => __game.time), auOn = await p.evaluate(() => !!__autoState());
 await p.evaluate(() => __auto(false)); const tA = Date.now(), wI = await waitIdle(150000); const tAll = wI < 0 ? -1 : Date.now() - t0;
 ok(auOn && gt1 - gt0 >= 1 && samp.size >= 3, `生成期间游戏与自动演示持续推进（游戏时间 +${(gt1 - gt0).toFixed(1)}s，${samp.size} 种演示状态（关卡状态/手指/演示步骤计时/剩余环）（忙碌采样 ${busyN}），自动演示仍开启=${auOn}）`);
